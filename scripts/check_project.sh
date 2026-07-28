@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATA_DIR="${DATA_DIR:-/mnt/c/Users/中研院/data/ecg_baseline_wander}"
+DATA_DIR="${DATA_DIR:-$ROOT_DIR/data/ecg_baseline_wander}"
 
 echo "Project root: $ROOT_DIR"
 echo "Data root:    $DATA_DIR"

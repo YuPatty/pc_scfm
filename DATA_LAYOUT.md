@@ -34,13 +34,13 @@ rl_exp/
 Default data root used by the configs:
 
 ```text
-/mnt/c/Users/中研院/data/ecg_baseline_wander
+/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander
 ```
 
 Windows path:
 
 ```text
-C:\Users\中研院\data\ecg_baseline_wander
+C:\Users\中研院\rl_exp\data\ecg_baseline_wander
 ```
 
 Recommended data layout:
@@ -75,7 +75,7 @@ ecg_baseline_wander/
 The folders above are already created at:
 
 ```text
-/mnt/c/Users/中研院/data/ecg_baseline_wander
+/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander
 ```
 
 Use `raw/` for downloaded or extracted source datasets. Do not train directly from `raw/`.
@@ -154,7 +154,7 @@ test.npz: fold 10
 All maintained configs use this top-level setting:
 
 ```yaml
-data_dir: "/mnt/c/Users/中研院/data/ecg_baseline_wander"
+data_dir: "/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander"
 ```
 
 Dataset loading resolves processed files as:

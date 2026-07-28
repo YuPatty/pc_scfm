@@ -98,19 +98,19 @@ cpsc.npz      -> 100% 僅測試
 YAML 預設值為：
 
 ```yaml
-data_dir: "/mnt/c/Users/中研院/data/ecg_baseline_wander"
+data_dir: "/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander"
 ```
 
 資料載入器預期處理後的 NPZ 檔案放在：
 
 ```text
-/mnt/c/Users/中研院/data/ecg_baseline_wander/processed
+/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed
 ```
 
 Windows 路徑：
 
 ```text
-C:\Users\中研院\data\ecg_baseline_wander\processed
+C:\Users\中研院\rl_exp\data\ecg_baseline_wander\processed
 ```
 
 必要檔案：
@@ -353,7 +353,7 @@ PTB-XL fold 10 test set
 python inference.py \
   --config configs/ecg_baseline_wander_mecg_e.yaml \
   --checkpoint /path/to/best_pcc_model.pt \
-  --input /mnt/c/Users/中研院/data/ecg_baseline_wander/processed/test.npz \
+  --input /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/test.npz \
   --output-dir /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/inference/mecg_e_test
 ```
 
@@ -773,7 +773,7 @@ python train_supervised.py --config configs/ecg_baseline_wander_my_model.yaml
 python inference.py \
   --config configs/ecg_baseline_wander_my_model.yaml \
   --checkpoint /path/to/best_pcc_model.pt \
-  --input /mnt/c/Users/中研院/data/ecg_baseline_wander/processed/test.npz \
+  --input /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/test.npz \
   --output-dir /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/inference/my_model_test
 ```
 

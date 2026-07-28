@@ -78,29 +78,29 @@ bash scripts/check_project.sh
 預設資料根目錄：
 
 ```text
-/mnt/c/Users/中研院/data/ecg_baseline_wander
+/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander
 ```
 
 Windows 對應路徑：
 
 ```text
-C:\Users\中研院\data\ecg_baseline_wander
+C:\Users\中研院\rl_exp\data\ecg_baseline_wander
 ```
 
 必要檔案：
 
 ```text
-/mnt/c/Users/中研院/data/ecg_baseline_wander/processed/train.npz
-/mnt/c/Users/中研院/data/ecg_baseline_wander/processed/val.npz
-/mnt/c/Users/中研院/data/ecg_baseline_wander/processed/test.npz
+/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/train.npz
+/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/val.npz
+/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/test.npz
 ```
 
 可選外部測試檔：
 
 ```text
-/mnt/c/Users/中研院/data/ecg_baseline_wander/processed/mit_bih.npz
-/mnt/c/Users/中研院/data/ecg_baseline_wander/processed/chapman.npz
-/mnt/c/Users/中研院/data/ecg_baseline_wander/processed/cpsc.npz
+/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/mit_bih.npz
+/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/chapman.npz
+/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/cpsc.npz
 ```
 
 每個 NPZ 建議包含：
@@ -142,9 +142,9 @@ cd /mnt/c/Users/中研院/rl_exp/src
 
 python3 preprocess_ecg.py \
   --config configs/ecg_baseline_wander_pc_scfm.yaml \
-  --input-dir /mnt/c/Users/中研院/data/ecg_baseline_wander/raw/PTBXL/records100 \
-  --metadata-csv /mnt/c/Users/中研院/data/ecg_baseline_wander/raw/PTBXL/ptbxl_database.csv \
-  --noise-dir /mnt/c/Users/中研院/data/ecg_baseline_wander/raw/NSTDB \
+  --input-dir /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/raw/PTBXL/records100 \
+  --metadata-csv /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/raw/PTBXL/ptbxl_database.csv \
+  --noise-dir /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/raw/NSTDB \
   --dataset-name ptbxl
 ```
 
@@ -153,8 +153,8 @@ python3 preprocess_ecg.py \
 ```bash
 python3 preprocess_ecg.py \
   --config configs/ecg_baseline_wander_pc_scfm.yaml \
-  --input-dir /mnt/c/Users/中研院/data/ecg_baseline_wander/raw/MITBIH \
-  --noise-dir /mnt/c/Users/中研院/data/ecg_baseline_wander/raw/NSTDB \
+  --input-dir /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/raw/MITBIH \
+  --noise-dir /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/raw/NSTDB \
   --dataset-name mit_bih
 ```
 
@@ -244,7 +244,7 @@ cd /mnt/c/Users/中研院/rl_exp/src
 python3 inference.py \
   --config configs/ecg_baseline_wander_pc_scfm.yaml \
   --checkpoint /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/checkpoint/ptbxl_lead2_baseline_wander_pc_scfm/pc_scfm/best_pcc_model.pt \
-  --input /mnt/c/Users/中研院/data/ecg_baseline_wander/processed/test.npz \
+  --input /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/test.npz \
   --output-dir /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/inference/pc_scfm_test
 ```
 
