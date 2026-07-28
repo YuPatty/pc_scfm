@@ -1,0 +1,45 @@
+import torch.nn as nn
+
+try:
+    from .factory import register_model
+    from .mecg_e import ECGDenoisingModel, TSMambaBlock
+except ImportError:
+    from factory import register_model
+    from mecg_e import ECGDenoisingModel, TSMambaBlock
+
+
+class AttentionModule(nn.Module):
+    def __init__(self, dim, n_head=8, dropout=0.0):
+        super().__init__()
+        self.layernorm = nn.LayerNorm(dim)
+        self.attn = nn.MultiheadAttention(dim, n_head, dropout=dropout, batch_first=True)
+
+    def forward(self, x):
+        x_norm = self.layernorm(x)
+        out, _ = self.attn(x_norm, x_norm, x_norm, need_weights=False)
+        return out
+
+
+class MambAttentionBlock(TSMambaBlock):
+    def __init__(self, h):
+        super().__init__(h)
+        self.attention = AttentionModule(
+            dim=h.dense_channel,
+            n_head=h.get("attention_heads", 8),
+            dropout=h.get("attention_dropout", 0.0),
+        )
+
+    def forward(self, x):
+        b, c, t, f = x.size()
+        x = x.permute(0, 3, 2, 1).contiguous().view(b * f, t, c)
+        x = self.attention(x) + x
+        x = self.tlinear(self.time_mamba(x).permute(0, 2, 1)).permute(0, 2, 1) + x
+        x = x.view(b, f, t, c).permute(0, 2, 1, 3).contiguous().view(b * t, f, c)
+        x = self.attention(x) + x
+        x = self.flinear(self.freq_mamba(x).permute(0, 2, 1)).permute(0, 2, 1) + x
+        return x.view(b, t, f, c).permute(0, 3, 1, 2)
+
+
+@register_model("mambattention_ecg")
+class MambAttentionECGDenoiser(ECGDenoisingModel):
+    block_cls = MambAttentionBlock

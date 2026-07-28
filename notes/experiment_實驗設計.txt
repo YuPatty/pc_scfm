@@ -1,0 +1,525 @@
+Single-lead ECG Baseline Wander Removal 實驗環境設計交接文件
+日期：2026-07-20
+來源：experiment_design_review_meeting_1.pptx
+
+
+一、研究目標
+
+本研究目標是建立一個具備高效能與泛化能力的 Single-lead ECG Baseline Wander Removal 模型。
+
+任務定義：
+- Input：含 Baseline Wander 的 single-lead ECG。
+- Output：去除 Baseline Wander 後的 restored ECG。
+- Clean reference / Ground truth：經一致前處理後、尚未加入 Baseline Wander 的 ECG。
+
+重要說明：
+- 本研究中的 ground truth 應稱為 clean reference 較精確。
+- 若 clean reference 是由 band-pass filter 或其他前處理得到，它不是完全原始且絕對乾淨的生理訊號，而是本實驗定義下的參考目標。
+- 文件與簡報中建議統一使用「clean reference」或「ground truth clean reference」，避免被質疑 ground truth 定義不嚴謹。
+
+核心要求：
+- 去除 Baseline Wander。
+- 保留 ECG 臨床形態，例如 P wave、QRS complex、T wave、ST segment、R-peak 與 RR interval。
+- 在跨資料集、跨醫院、跨設備與跨族群條件下仍能保持穩定表現。
+- 模型計算成本需具備實務應用可行性。
+
+
+二、使用 Multi-lead Dataset 但固定 Lead II 的理由
+
+雖然研究目標是 single-lead ECG，但可以從 multi-lead ECG dataset 中固定抽取 Lead II，建立一致的 single-lead 實驗環境。
+
+選擇 Lead II 的理由：
+- Lead II 是臨床上常用導程。
+- P wave、QRS complex、T wave 通常較清楚。
+- PTB-XL、MIT-BIH、Chapman、CPSC 等資料集皆可取得或對應 Lead II。
+- 所有資料集固定使用同一導程，可降低導程差異造成的比較偏差。
+
+建議在方法章清楚寫成：
+All datasets are converted into a consistent single-lead setting by extracting Lead II.
+
+
+三、資料集角色
+
+1. PTB-XL
+- 角色：主要訓練資料集、in-domain test 資料集。
+- 特性：12-lead ECG、約 21,000 筆 ECG、約 18,000 位病人、500 Hz。
+- 用途：學習 ECG morphology 與 Baseline Wander Removal 任務。
+
+2. MIT-BIH Arrhythmia
+- 角色：Cross Dataset 測試資料集。
+- 特性：經典 arrhythmia dataset、48 位病人、2-lead ECG。
+- 用途：驗證模型在不同資料分布下的泛化能力。
+
+3. Chapman
+- 角色：Cross Hospital 測試資料集。
+- 特性：約 45,000 筆 ECG、12-lead ECG、來自不同醫院與不同疾病族群。
+- 用途：驗證模型在跨醫院資料上的泛化能力。
+- 注意：若未使用 hospital metadata 進行 subgroup 分析，較精確的解讀應是 external dataset generalization，而不是嚴格的 hospital-level causal conclusion。
+
+4. CPSC
+- 角色：Cross Device / Cross Population 測試資料集。
+- 特性：大型 ECG dataset，包含不同設備、不同醫院與不同族群。
+- 用途：驗證模型在跨設備與跨族群條件下的泛化能力。
+- 注意：若 device 或 population metadata 不完整，應將結果解讀為 external generalization，並避免過度宣稱模型已完整驗證所有設備或族群。
+
+整體設計：
+- PTB-XL 用於訓練與 in-domain 評估。
+- MIT-BIH、Chapman、CPSC 僅作 external test，不參與訓練、不參與 validation、不參與模型選擇。
+
+
+四、資料前處理流程
+
+所有資料集應採用一致前處理流程，避免資料處理差異影響模型比較。
+
+建議流程：
+1. 讀取原始 ECG。
+2. 選取 Lead II。
+3. 統一取樣率。
+4. 建立 clean reference。
+5. Normalization。
+6. 固定長度切片。
+7. 加入 Baseline Wander。
+8. 產生 model input。
+9. 使用未加入 Baseline Wander 的 clean reference 作為訓練與評估目標。
+
+投影片原先流程：
+Raw ECG -> Lead II -> Band-pass Filter (0.5-40 Hz) -> Normalization -> Fixed-length slicing -> Add Baseline Wander (NSTDB) -> Model Input
+
+建議修正：
+- 此流程可保留作為一個前處理候選設定，但不建議直接把 0.5-40 Hz band-pass 視為唯一標準設定。
+- 對 Baseline Wander Removal 任務而言，0.5 Hz high-pass 可能已先移除一部分 baseline drift，會讓模型任務變得不夠乾淨，也可能影響 ST segment 或 T-wave 低頻形態。
+- 較穩健的主設定建議使用較保守的 filtering，例如 low-pass 40 Hz，或 0.05-40 Hz / 0.1-40 Hz band-pass。
+- 若仍使用 0.5-40 Hz，應將它明確標示為 clean reference construction choice 或 sensitivity analysis，而不是無條件的真實 ground truth。
+
+所有前處理設定需補充以下細節：
+- Filter type，例如 Butterworth。
+- Filter order。
+- 是否使用 zero-phase filtering，例如 filtfilt。
+- Resampling rate。
+- Window length。
+- Overlap ratio。
+- Normalization 方法，例如 z-score 或 min-max。
+- Baseline Wander scaling 方式。
+
+關鍵注意：
+- Clean reference 的建立方式必須和 evaluation metrics 的定義一致。
+- 若前處理已移除 0-0.5 Hz 低頻成分，後續再用 0-0.5 Hz power reduction 評估 baseline removal 時要特別說明計算位置，避免指標被前處理污染。
+- Reference-based metrics 僅適用於人工合成 Baseline Wander 且有 clean reference 的實驗；real-world no-reference test 不能直接使用 PRD、RMSE、SNR、cosine similarity 等需要 clean reference 的指標。
+
+
+五、資料切分原則
+
+PTB-XL 必須採用與 DISR-ECG 論文相同的官方 fold 切分，並維持 patient-wise split，避免 data leakage。
+
+固定切分比例與 fold：
+- Training set：約 80%，使用 PTB-XL official folds 1-8。
+- Validation set：約 10%，使用 PTB-XL official fold 9。
+- In-domain test set：約 10%，使用 PTB-XL official fold 10。
+
+對應論文設定：
+- DISR-ECG 在 training 與 in-domain evaluation 使用 PTB-XL。
+- 論文明確採用官方資料切分：training = folds 1-8，validation = fold 9，testing = fold 10。
+- 本實驗若使用 PTB-XL，資料切分比例固定為 80 / 10 / 10，不再另行隨機切分。
+
+外部測試：
+- MIT-BIH：test only。
+- Chapman：test only。
+- CPSC：test only。
+
+規則：
+- 同一病人的 ECG 不可同時出現在 train、validation、test。
+- External test datasets 不可用於 hyperparameter tuning。
+- 所有模型必須使用相同切分、相同前處理、相同 Lead II 輸入、相同 Baseline Wander 合成規則。
+- Baseline model 尚未決定前，應先固定實驗環境，避免之後因模型選擇改變資料設定。
+
+
+六、Baseline Wander 合成設計
+
+Baseline Wander 合成規則是本實驗環境的關鍵，必須可重現。
+
+基本公式：
+noisy_ecg = clean_reference + alpha * baseline_wander
+
+其中：
+- clean_reference：經一致前處理後、尚未加入 Baseline Wander 的 ECG。
+- baseline_wander：由 NSTDB 或人工方式產生的低頻漂移。
+- alpha：控制 Baseline Wander 強度的 scaling factor。
+
+主要訓練污染：
+- 使用 NSTDB Baseline Wander。
+- 從 NSTDB 隨機取樣 baseline segment。
+- 將 baseline segment 裁切或重取樣到與 ECG window 相同長度。
+- 使用隨機 alpha 控制污染強度。
+
+控制變因測試：
+- Sinusoidal baseline。
+- Multi-sine baseline。
+- Random low-frequency drift。
+- NSTDB real baseline。
+
+建議強度設定：
+- ECG peak-to-peak amplitude 的 5%、10%、20%、30%、50%。
+
+建議頻率設定：
+- 0.05、0.1、0.2、0.3、0.5、0.8、1.0 Hz。
+
+目的：
+- 測試模型是否能處理不同 Baseline Wander 強度。
+- 測試模型是否能處理不同 Baseline Wander 頻率。
+- 測試模型是否只 overfit NSTDB 的特定低頻型態。
+
+
+七、實驗設計
+
+Experiment 1：In-domain Performance
+- Train：PTB-XL。
+- Test：PTB-XL held-out test set。
+- 目的：評估模型在同資料集上的 Baseline Wander Removal 效能。
+
+Experiment 2：Robustness - Baseline Strength
+- Train：PTB-XL。
+- Test：PTB-XL with different Baseline Wander strengths。
+- 強度：5%、10%、20%、30%、50%。
+- 目的：評估模型在不同污染強度下的魯棒性。
+
+Experiment 3：Robustness - Baseline Frequency
+- Train：PTB-XL。
+- Test：PTB-XL with different Baseline Wander frequencies。
+- 頻率：0.05、0.1、0.2、0.3、0.5、0.8、1.0 Hz。
+- 目的：評估模型對不同低頻漂移的適應能力。
+
+Experiment 4：Cross Dataset
+- Train：PTB-XL。
+- Test：MIT-BIH。
+- 目的：驗證跨資料集泛化能力。
+
+Experiment 5：Cross Hospital / External Hospital Dataset
+- Train：PTB-XL。
+- Test：Chapman。
+- 目的：驗證跨醫院泛化能力。
+- 解讀：若可取得 hospital metadata，建議進一步做 subgroup analysis；若不可取得，則將此實驗解讀為 external dataset generalization。
+
+Experiment 6：Cross Device / Cross Population / External Population Dataset
+- Train：PTB-XL。
+- Test：CPSC。
+- 目的：驗證跨設備與跨族群泛化能力。
+- 解讀：若可取得 device、hospital 或 population metadata，建議進一步做 subgroup analysis；若不可取得，則將此實驗解讀為 external dataset generalization。
+
+Experiment 7：Ablation Study
+- Train：PTB-XL。
+- Test：PTB-XL held-out test set，建議額外加入至少一個 external test set。
+- 目的：驗證模型各模組的貢獻。
+- 可測項目：attention block、frequency block、residual block、loss function、conditioning strategy。
+
+Experiment 8：Complexity Analysis
+- 比較項目：parameters、FLOPs、inference time、memory usage。
+- 目的：評估模型是否具有實務部署可行性。
+
+Experiment 9：Real-world No-reference Test
+- Test：原本就含 Baseline Wander 的真實 ECG。
+- Ground truth：無。
+- 目的：補足 synthetic test 無法完全代表真實污染的限制。
+- 評估方式：去除前後波形比較、PSD 或 spectrogram、低頻能量下降、R-peak detection 穩定度、必要時加入專家定性評分。
+
+
+八、評估指標設計
+
+建議將 metrics 分成 Primary、Secondary、Optional 三層。正式簡報與主要表格以 Primary 為主，Secondary 作為補充，Optional 視實作成熟度決定是否加入。
+
+適用範圍：
+- SSD、MAD、PRD、RMSE、SNR improvement、cosine similarity 等 reference-based metrics 僅適用於有 clean reference 的 synthetic evaluation。
+- Real-world no-reference test 沒有 clean reference，應使用 no-reference analysis，例如低頻能量變化、PSD/spectrogram、R-peak detection 穩定度與視覺檢查。
+- 所有 metrics 的計算都應在相同 normalization 與相同 window 對齊條件下進行。
+
+MECG-E 論文對齊指標：
+- 為了和 MECG-E: Mamba-based ECG Enhancer for Baseline Wander Removal 的結果表格對齊，本研究需至少回報 SSD、MAD、PRD、CosSim。
+- SSD、MAD、PRD：數值越低越好。
+- CosSim：數值越高越好。
+- 這四個指標皆需使用 restored ECG 與 clean reference 計算，因此僅適用於 synthetic Baseline Wander evaluation 或其他有 clean reference 的資料。
+
+Primary metrics：
+
+1. PRD (%)
+- 衡量 restored ECG 與 clean reference 的整體差異。
+- 數值越低越好。
+- 適合作為主要去除效果指標。
+- 僅適用於有 clean reference 的實驗。
+
+2. SNR improvement
+- 衡量去除 Baseline Wander 後訊號品質是否提升。
+- 建議回報 output SNR 與 SNR improvement。
+- 數值越高越好。
+- 在 synthetic evaluation 中，noise 可定義為 restored ECG 與 clean reference 的差值。
+- 建議明確寫出公式，例如 SNR = 10 log10(sum(clean_reference^2) / sum((clean_reference - restored_ecg)^2))。
+- Real-world no-reference test 不應回報同一定義的 SNR。
+
+3. Low-frequency power reduction
+- 比較去除前後 0-0.5 Hz 或 0-0.7 Hz 的低頻能量。
+- 直接對應 Baseline Wander 是否被抑制。
+- 數值越高通常代表低頻漂移去除越明顯，但需搭配 morphology 指標避免過度濾波。
+- 此指標應比較 model input 與 restored output 的低頻能量，而不是比較已被 high-pass filter 過的 clean reference。
+- 若前處理使用 0.5 Hz high-pass，需避免再用 0-0.5 Hz 作為主要低頻評估範圍，或必須明確說明此指標是在加入 Baseline Wander 後才計算。
+
+4. R-peak timing error / RR interval MAE
+- 衡量去除 Baseline Wander 後是否保留心跳時序。
+- 數值越低越好。
+- 這是 morphology preservation 中最穩定、較容易自動化的指標。
+- 需固定 R-peak detector，並對所有模型使用同一個偵測器與同一套參數。
+
+Secondary metrics：
+
+1. SSD (Sum of Squared Distances)
+- MECG-E 論文使用的主要距離指標之一。
+- 衡量 restored ECG 與 clean reference 的逐點平方誤差總和。
+- 數值越低越好。
+- 公式可寫為 SSD = sum((restored_ecg - clean_reference)^2)。
+- 注意：SSD 會隨 window length、normalization scale、lead 數量改變，因此所有模型必須在相同長度與相同尺度下比較。
+
+2. MAD (Maximum Absolute Distance)
+- MECG-E 論文使用的主要距離指標之一。
+- 衡量 restored ECG 與 clean reference 之間最大的逐點絕對誤差。
+- 數值越低越好。
+- 公式可寫為 MAD = max(abs(restored_ecg - clean_reference))。
+- 注意：此處 MAD 指 Maximum Absolute Distance，不是 mean absolute deviation。
+
+3. RMSE
+- 衡量 restored ECG 與 clean reference 的逐點誤差。
+- 容易受振幅尺度影響，因此不建議單獨作為主指標。
+
+4. Cosine similarity / CosSim
+- 衡量 restored ECG 與 clean reference 的整體波形方向與形狀相似度。
+- 數值越高越好。
+- 適合作為 global waveform similarity 的輔助指標。
+- 限制：對振幅縮放不敏感，對局部 ST/T/QRS 變形也可能不敏感，因此不能取代 PRD、SNR 或 morphology 指標。
+- 為了和 MECG-E 論文命名一致，主要表格中可寫作 CosSim。
+- 建議使用 window-wise centered cosine similarity，也就是每個 window 先做 mean removal 或使用與模型輸入一致的 normalization 後再計算。
+- 不建議在含明顯 DC offset 或未對齊的訊號上直接計算 cosine similarity。
+
+5. QRS amplitude error
+- 衡量 QRS 振幅是否被模型削弱或扭曲。
+- 適合作為補充 morphology 指標。
+- 需固定 QRS 或 R-peak detection 方法，並在相同 beat alignment 條件下計算。
+
+6. Visual comparison and spectrum analysis
+- 比較 input、restored output、clean reference、residual error、PSD 或 spectrogram。
+- 對 ECG denoising 任務很重要，因為數值指標不一定能反映臨床形態破壞。
+
+Optional metrics：
+
+1. ST segment deviation
+- 臨床意義高，但需要可靠 ST segment 定位。
+- 若沒有穩定 ECG delineation 工具，不建議列為主指標。
+
+2. T-wave morphology error
+- 可評估 T wave 是否被扭曲。
+- 自動量測難度較高，建議作為進階分析。
+
+3. Downstream classification accuracy
+- 可驗證 denoising 是否幫助診斷模型。
+- 但會引入另一個分類模型與額外變因，不建議放在第一版核心實驗。
+
+建議主要結果表格欄位：
+- SSD
+- MAD
+- PRD
+- CosSim
+- SNR improvement
+- Low-frequency power reduction
+- R-peak timing error 或 RR interval MAE
+- Parameters
+- FLOPs
+- Inference time
+
+
+九、比較方法與統計分析
+
+Baseline model 目前尚未決定，因此本文件不固定比較模型清單。
+
+但一旦比較模型確定，需遵守：
+- 相同 train / validation / test split。
+- 相同前處理流程。
+- 相同 Lead II 輸入。
+- 相同 Baseline Wander 合成方式。
+- 相同 evaluation metrics。
+- 相同 hyperparameter tuning 原則。
+
+統計分析建議：
+- 對每個 ECG window 計算指標。
+- 每個 dataset 回報 mean ± standard deviation。
+- 模型間比較使用 paired statistical test。
+- 若分布不符合常態，可使用 Wilcoxon signed-rank test。
+- 多重比較使用 Bonferroni 或 Holm correction。
+- 顯著水準 alpha = 0.05。
+
+建議報告方式：
+- 主要表格分 dataset 呈現。
+- Robustness 實驗用折線圖呈現不同強度與不同頻率下的變化。
+- External test 使用同一套 metrics，清楚比較 PTB-XL、MIT-BIH、Chapman、CPSC 的落差。
+
+
+十、視覺化結果
+
+每個主要實驗至少放三類案例：
+- 成功案例。
+- 普通案例。
+- 失敗案例。
+
+每個案例建議顯示：
+- Input ECG with Baseline Wander。
+- Restored ECG。
+- Clean reference。
+- Residual error。
+- PSD 或 spectrogram。
+
+視覺化目的：
+- 確認 Baseline Wander 是否真的被移除。
+- 確認 QRS、ST、T wave 是否被保留。
+- 呈現模型失敗模式，避免只展示成功案例造成偏誤。
+
+
+十一、目前投影片架構的優點
+
+目前投影片已有清楚主軸：
+- 研究目標明確：Single-lead ECG Baseline Wander Removal。
+- 使用 Lead II 建立一致 single-lead 設定。
+- 以 PTB-XL 作為主要訓練資料。
+- 使用 MIT-BIH、Chapman、CPSC 分別對應 cross dataset、cross hospital、cross device / population。
+- 實驗涵蓋 in-domain performance、robustness、generalization、ablation、complexity。
+- 評估方式包含客觀指標與視覺檢查。
+
+整體方向合理，可以作為正式研究設計基礎。
+
+
+十二、需要特別補強的部分
+
+1. Clean reference 定義
+- 需統一說法，避免 ground truth 定義被質疑。
+
+2. Patient-wise split
+- 必須明確寫出，這是避免 data leakage 的關鍵。
+
+3. Baseline Wander 合成細節
+- NSTDB 如何取樣、裁切、重取樣、scaling、對齊 window 都要可重現。
+
+4. Controlled robustness test
+- 不應只使用單一 NSTDB baseline。
+- 應加入不同強度、不同頻率與不同型態的 controlled baseline。
+
+5. Metrics 主次
+- 主指標不要太多。
+- 建議主打 PRD、SNR improvement、low-frequency power reduction、R-peak/RR interval error。
+- Cosine similarity 可以放，但應定位為輔助波形相似度指標。
+- Reference-based metrics 僅能用在有 clean reference 的 synthetic evaluation。
+- Low-frequency power reduction 需避免和前處理 high-pass filter 的頻段設定互相衝突。
+
+6. Real-world no-reference test
+- 建議加入，因為 synthetic baseline 不能完全代表真實環境。
+- 此實驗不應回報 PRD、RMSE、SNR、cosine similarity 等需要 clean reference 的指標，應改用 no-reference 分析與視覺檢查。
+
+7. External test 解讀
+- MIT-BIH、Chapman、CPSC 可用於外部泛化測試。
+- 若沒有 hospital、device、population metadata 的 subgroup analysis，應避免過度宣稱模型已完成嚴格的跨醫院、跨設備或跨族群因果驗證。
+
+
+十三、推薦最終版本
+
+最推薦的實驗環境如下：
+
+1. 使用 PTB-XL Lead II 作為主要訓練資料。
+2. 採用 patient-wise train / validation / test split。
+3. 對所有資料集使用一致前處理流程。
+4. 將 clean reference 定義為「經一致前處理後、尚未加入 Baseline Wander 的 ECG」。
+5. 不將 0.5-40 Hz band-pass 視為唯一標準設定；建議優先採用 low-pass 40 Hz 或 0.05/0.1-40 Hz 等較保守前處理，並將 0.5-40 Hz 作為候選設定或 sensitivity analysis。
+6. 使用 NSTDB Baseline Wander 作為主要訓練污染。
+7. 使用 controlled synthetic baseline 測試不同強度與頻率的魯棒性。
+8. 使用 MIT-BIH、Chapman、CPSC 做 external generalization test；若 metadata 足夠，再進一步做 hospital/device/population subgroup analysis。
+9. 主要指標使用 PRD、SNR improvement、low-frequency power reduction、R-peak/RR interval error。
+10. 輔助指標使用 RMSE、centered cosine similarity、QRS amplitude error、視覺比較與頻譜分析。
+11. Reference-based metrics 只用於有 clean reference 的 synthetic evaluation；real-world no-reference test 使用 PSD/spectrogram、低頻能量變化、R-peak detection 穩定度與視覺檢查。
+12. 加入 ablation study 與 complexity analysis。
+13. 若時間允許，加入 real-world no-reference test。
+
+一句話總結：
+本研究的實驗環境應設計成「同一訓練來源、同一 Lead II、同一前處理、可重現 Baseline Wander 合成、可控制魯棒性測試、跨資料集外部驗證」的 benchmark，這樣才能有力支持模型在 Baseline Wander Removal 任務上的效能、魯棒性、泛化能力與實務應用價值。
+
+
+十四、目前專案實作對應
+
+目前程式已將本文件的核心實驗流程落到以下工具：
+
+1. 前處理與資料產生
+- 程式：code/preprocess_ecg.py。
+- 功能：讀取 ECG records，選 Lead II，filter，resample，window slicing，normalization，baseline wander synthesis，輸出 NPZ。
+- 支援輸入：NPZ、NPY、CSV/TXT numeric arrays、WFDB records（需安裝 wfdb）。
+- PTB-XL：依 metadata 中的 strat_fold / fold / ptbxl_fold 產生 train.npz、val.npz、test.npz。
+- External datasets：MIT-BIH、Chapman、CPSC 產生 test-only NPZ。
+
+2. 資料切分
+- YAML 已明確設定 PTB-XL official folds。
+- Training：folds 1-8，約 80%。
+- Validation：fold 9，約 10%。
+- In-domain test：fold 10，約 10%。
+- External test：mit_bih.npz、chapman.npz、cpsc.npz，100% test only。
+- Dataset loader 若 NPZ 內有 fold metadata，會檢查 train/val/test 是否符合 official folds。
+
+3. Baseline Wander 合成
+- 程式：code/preprocess_ecg.py。
+- 支援 NSTDB、sinusoidal、multi_sine、random low-frequency drift。
+- 支援 alpha_values，例如 0.05、0.1、0.2、0.3、0.5。
+- 支援 controlled_frequencies_hz，例如 0.05、0.1、0.2、0.3、0.5、0.8、1.0 Hz。
+
+4. 訓練與測試
+- 程式：code/train_supervised.py。
+- 模型：mecg_e、mambattention_ecg。
+- 支援 checkpoint、resume、early stopping、loss curves。
+- 訓練結束會評估 PTB-XL fold 10，若 external NPZ 存在也會評估 MIT-BIH、Chapman、CPSC。
+
+5. Inference
+- 程式：code/inference.py。
+- 輸出 restored_ecg.npz、metrics_summary.csv、metrics_per_window.csv、metrics_summary.json。
+- 若 input 沒有 clean_reference，只輸出 no-reference 可計算指標。
+
+6. Experiment 2：Baseline Strength Robustness
+- 程式：code/experiment_suite.py exp2-strength。
+- 自動產生不同 alpha 的 PTB-XL fold 10 test NPZ。
+- 自動跑 inference。
+- 輸出 exp2_strength/summary.csv。
+
+7. Experiment 3：Baseline Frequency Robustness
+- 程式：code/experiment_suite.py exp3-frequency。
+- 自動產生不同 frequency 的 PTB-XL fold 10 test NPZ。
+- 自動跑 inference。
+- 輸出 exp3_frequency/summary.csv。
+
+8. Experiment 7：Ablation Study
+- 程式：code/experiment_suite.py exp7-ablation。
+- 自動產生 ablation configs。
+- 目前包含 full、no_frequency_block、no_consistency_loss、no_complex_loss、no_time_loss、complex_input、waveform_input、with_attention_block。
+- 可選擇直接批次訓練。
+- 輸出 exp7_ablation/ablation_plan.csv 與 exp7_ablation/summary.csv。
+
+9. Experiment 8：Complexity Analysis
+- 程式：code/utils.py 的 profile_model_complexity，由 train_supervised.py 呼叫。
+- 輸出 parameters、trainable parameters、FLOPs、inference time、peak CUDA memory。
+- FLOPs 需安裝 thop；未安裝時為 NaN。
+- CPU memory usage 目前不作為正式指標。
+
+10. 視覺化
+- 訓練結果會輸出 prediction_sample_*.png。
+- 訓練結果也會輸出 spectrum_sample_*.png，包含 PSD / spectrogram 診斷圖。
+- result_analysis.py select-cases 可依 PRD 等指標自動挑 best、median、worst cases。
+
+11. 結果彙整與統計分析
+- 程式：code/result_analysis.py。
+- aggregate：彙整 results root 下的 metrics_summary.csv 與 summary.csv，產生 paper-ready mean ± std 總表。
+- select-cases：自動挑 best / median / worst case 並畫圖。
+- paired-stats：對兩個模型的 metrics_per_window.csv 做 paired t-test、Wilcoxon signed-rank test，並支援 Holm / Bonferroni correction。
+
+12. 尚未納入第一版必要流程的項目
+- Real-world no-reference 專家評分。
+- ST segment deviation。
+- T-wave morphology error。
+- Downstream classification accuracy。
+- Hospital / device / population subgroup analysis。
+
+上述項目需要額外資料、標籤、metadata 或 ECG delineation 工具，因此目前列為 optional / future work，不影響第一版 Baseline Wander Removal benchmark 的核心完整性。

@@ -1,0 +1,12 @@
+numpy
+scipy
+pyyaml
+omegaconf
+matplotlib
+tensorboard
+torch
+mamba_ssm
+
+# Optional, but useful for data preparation and complexity reports.
+wfdb
+thop

@@ -1,0 +1,96 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.python-version
+pip-wheel-metadata/
+
+# Local config and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Experiment outputs
+/runs/
+/outputs/
+/results/
+/checkpoints/
+/checkpoint/
+/logs/
+/log/
+/tensorboard_logs/
+/wandb/
+/mlruns/
+
+# Model weights and serialized training state
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.pkl
+*.pickle
+*.joblib
+
+# Data accidentally placed inside this repository
+/data/
+/raw/
+/processed/
+/external/
+*.npz
+*.npy
+*.mat
+*.h5
+*.hdf5
+
+# Generated analysis artifacts
+*.csv.tmp
+*.tsv.tmp
+*.parquet
+*.feather
+
+# Large copied reference workspace
+/references/pc_scfm_original/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Editors and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build and packaging artifacts
+/build/
+/dist/
+*.egg-info/
+.eggs/
+
+# Keep source, configs, docs, and project notes trackable.
+!src/
+!src/**
+!scripts/
+!scripts/**
+!docs/
+!docs/**
+!notes/
+!notes/**
+!README.md
+!DATA_LAYOUT.md
+!requirements.txt

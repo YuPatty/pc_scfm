@@ -1,0 +1,682 @@
+ECG Baseline Wander Removal 實驗使用菜單
+位置：C:\Users\中研院\rl_exp
+WSL 路徑：/mnt/c/Users/中研院/rl_exp
+更新日期：2026-07-21
+
+用途：
+這份文件專門給 Single-lead ECG Baseline Wander Removal 實驗使用。
+內容涵蓋資料前處理、訓練、resume、inference、Experiment 2/3/7、結果彙整、統計分析與案例挑選。
+
+
+一、目前專案架構
+
+主要程式位於：
+
+  code/
+
+重要入口：
+
+  preprocess_ecg.py
+    產生 train/val/test/external NPZ。
+
+  train_supervised.py
+    訓練 MECG-E 或 MambAttention ECG。
+
+  inference.py
+    對指定 NPZ 跑 inference 並輸出 restored ECG 與 metrics。
+
+  experiment_suite.py
+    跑 Experiment 2、Experiment 3、Experiment 7。
+
+  result_analysis.py
+    彙整總表、挑 best/median/worst 案例、做 paired statistics。
+
+
+二、目前可用模型
+
+模型註冊在：
+
+  code/models/mecg_e.py
+
+可用 model_name：
+
+  mecg_e
+    MECG-E / Mamba ECG denoising 架構。
+
+  mambattention_ecg
+    在 MECG-E 架構上加入 attention block 的版本。
+
+
+三、設定檔
+
+主要設定檔：
+
+  code/configs/ecg_baseline_wander_mecg_e.yaml
+  code/configs/ecg_baseline_wander_mambattention.yaml
+
+train_supervised.py 不指定 --config 時，預設使用：
+
+  configs/ecg_baseline_wander_mecg_e.yaml
+
+
+四、資料位置
+
+YAML 預設：
+
+  data_dir: "/mnt/c/Users/中研院/data/ecg_baseline_wander"
+
+processed NPZ 預設位置：
+
+  /mnt/c/Users/中研院/data/ecg_baseline_wander/processed
+
+Windows 對應：
+
+  C:\Users\中研院\data\ecg_baseline_wander\processed
+
+基本檔案：
+
+  train.npz
+  val.npz
+  test.npz
+
+可選：
+
+  train_val.npz
+  mit_bih.npz
+  chapman.npz
+  cpsc.npz
+
+如果沒有 train_val.npz，程式會用 val.npz 代替。
+
+
+五、資料格式
+
+每個 NPZ 必須包含：
+
+  noisy_ecg
+  clean_reference
+
+或替代 key：
+
+  input
+  target
+
+建議標準 key：
+
+  noisy_ecg        加入 baseline wander 的 ECG，模型 input。
+  clean_reference 尚未加入 baseline wander 的 clean reference，模型 target。
+
+shape：
+
+  [N, T]
+
+或：
+
+  [N, 1, T]
+
+目前 YAML 預設：
+
+  window_size: 512
+  resample_hz: 250
+
+建議 shape：
+
+  [N, 1, 512]
+
+dtype：
+
+  float32
+
+
+六、資料切分原則
+
+PTB-XL 採用 DISR-ECG 論文相同官方 folds：
+
+  train.npz：PTB-XL folds 1-8，約 80%。
+  val.npz：PTB-XL fold 9，約 10%。
+  test.npz：PTB-XL fold 10，約 10%。
+
+這是 patient-wise split，用來避免 data leakage。
+
+外部測試資料：
+
+  mit_bih.npz：100% test only。
+  chapman.npz：100% test only。
+  cpsc.npz：100% test only。
+
+外部資料不可用於：
+
+  training
+  validation
+  early stopping
+  checkpoint selection
+  hyperparameter tuning
+
+
+七、如何產生 NPZ
+
+進入 code：
+
+  cd /mnt/c/Users/中研院/rl_exp/code
+
+產生 PTB-XL train/val/test：
+
+  python preprocess_ecg.py \
+    --config configs/ecg_baseline_wander_mecg_e.yaml \
+    --input-dir /path/to/ptbxl_records \
+    --metadata-csv /path/to/ptbxl_database.csv \
+    --noise-dir /path/to/nstdb_records \
+    --dataset-name ptbxl
+
+PTB-XL metadata CSV 必須有其中一個欄位：
+
+  strat_fold
+  fold
+  ptbxl_fold
+
+產生 Chapman external test：
+
+  python preprocess_ecg.py \
+    --config configs/ecg_baseline_wander_mecg_e.yaml \
+    --input-dir /path/to/chapman_records \
+    --noise-dir /path/to/nstdb_records \
+    --dataset-name chapman
+
+產生 MIT-BIH external test：
+
+  python preprocess_ecg.py \
+    --config configs/ecg_baseline_wander_mecg_e.yaml \
+    --input-dir /path/to/mit_bih_records \
+    --noise-dir /path/to/nstdb_records \
+    --dataset-name mit_bih
+
+產生 CPSC external test：
+
+  python preprocess_ecg.py \
+    --config configs/ecg_baseline_wander_mecg_e.yaml \
+    --input-dir /path/to/cpsc_records \
+    --noise-dir /path/to/nstdb_records \
+    --dataset-name cpsc
+
+preprocess_ecg.py 支援：
+
+  NPZ
+  NPY
+  CSV / TXT numeric arrays
+  WFDB records，如果有安裝 wfdb
+
+處理流程：
+
+  讀 ECG -> 選 Lead II -> filter -> resample -> window -> normalize -> 合成 baseline wander -> 輸出 NPZ
+
+
+八、Baseline Wander 合成
+
+YAML 設定：
+
+  baseline_wander:
+    train_source: nstdb
+    alpha_mode: peak_to_peak_ratio
+    alpha_values: [0.05, 0.1, 0.2, 0.3, 0.5]
+    controlled_frequencies_hz: [0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1.0]
+    test_types:
+      - nstdb
+      - sinusoidal
+      - multi_sine
+      - random_low_frequency_drift
+
+preprocess_ecg.py 已實作 baseline synthesis。
+
+可指定 baseline 類型：
+
+  --baseline-kind nstdb
+  --baseline-kind sinusoidal
+  --baseline-kind multi_sine
+  --baseline-kind random_low_frequency_drift
+
+可指定強度：
+
+  --alpha-values 0.05,0.1,0.2,0.3,0.5
+
+可指定頻率：
+
+  --frequencies-hz 0.05,0.1,0.2,0.3,0.5,0.8,1.0
+
+
+九、訓練
+
+進入 code：
+
+  cd /mnt/c/Users/中研院/rl_exp/code
+
+訓練 MECG-E：
+
+  python train_supervised.py --config configs/ecg_baseline_wander_mecg_e.yaml
+
+或直接：
+
+  python train_supervised.py
+
+訓練 MambAttention：
+
+  python train_supervised.py --config configs/ecg_baseline_wander_mambattention.yaml
+
+小測試：
+
+  python train_supervised.py --config configs/ecg_baseline_wander_mecg_e.yaml training.train_iterations=2 training.eval_every=1 training.batch_size=2
+
+
+十、Resume
+
+若訓練中斷，用：
+
+  python train_supervised.py --config configs/ecg_baseline_wander_mecg_e.yaml training.resume=True
+
+指定 checkpoint：
+
+  python train_supervised.py --config configs/ecg_baseline_wander_mecg_e.yaml training.resume=True training.resume_checkpoint=/path/to/training_state.pt
+
+重要：
+
+  resume=False 時，程式會清掉同一 run 的 checkpoint/results/log。
+  resume=True 時，程式會保留舊資料並從 training_state.pt 接續。
+
+
+十一、Checkpoint 與輸出位置
+
+YAML 預設：
+
+  root_dir: "/mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander"
+  checkpoint_dir: "${root_dir}/checkpoint"
+  results_dir: "${root_dir}/results"
+  log_dir: "${root_dir}/log"
+
+checkpoint 常見檔案：
+
+  best_pcc_model.pt
+  best_model.pt
+  model_last.pt
+  training_state.pt
+  tensorboard_logs/
+
+results 常見檔案：
+
+  loss_curves/
+  prediction_sample_1.png
+  prediction_sample_2.png
+  prediction_sample_3.png
+  spectrum_sample_1.png
+  spectrum_sample_2.png
+  spectrum_sample_3.png
+  metrics_ptbxl_fold10_test.yaml
+  metrics_mit_bih.yaml
+  metrics_chapman.yaml
+  metrics_cpsc.yaml
+  complexity_summary.yaml
+
+log：
+
+  log.log
+
+
+十二、評價指標
+
+MECG-E 對齊指標：
+
+  SSD
+    Sum of Squared Distances，越低越好。
+
+  MAD
+    Maximum Absolute Distance，越低越好。
+    注意：不是 mean absolute deviation。
+
+  PRD
+    Percentage Root-Mean-Square Difference，越低越好。
+
+  CosSim
+    Cosine similarity，越高越好。
+
+Baseline Wander 指標：
+
+  Output_SNR_dB
+    restored ECG 相對 clean reference 的 SNR，越高越好。
+
+  SNR_Improvement_dB
+    output SNR - input SNR，越高越好。
+
+  LF_Reduction_dB
+    input ECG 與 restored ECG 的低頻能量下降，越高越好。
+
+Morphology 指標：
+
+  R_Peak_Timing_Error_ms
+    越低越好。
+
+  RR_Interval_MAE_ms
+    越低越好。
+
+  QRS_Amplitude_Error
+    越低越好。
+
+Complexity：
+
+  Parameters
+  Trainable_Parameters
+  FLOPs
+  Inference_Time_ms
+  Peak_Memory_MB
+
+注意：
+
+  FLOPs 需要安裝 thop；沒裝時會是 NaN。
+  Peak_Memory_MB 是 CUDA peak memory；CPU memory 沒有正式量測。
+  沒有 clean_reference 的資料只能算 no-reference 指標，例如 LF_Reduction_dB。
+
+
+十三、Inference
+
+MECG-E inference：
+
+  python inference.py \
+    --config configs/ecg_baseline_wander_mecg_e.yaml \
+    --checkpoint /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/checkpoint/ptbxl_lead2_baseline_wander_mecg_e/mecg_e/best_pcc_model.pt \
+    --input /mnt/c/Users/中研院/data/ecg_baseline_wander/processed/test.npz \
+    --output-dir /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/inference/mecg_e_test
+
+MambAttention inference：
+
+  python inference.py \
+    --config configs/ecg_baseline_wander_mambattention.yaml \
+    --checkpoint /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/checkpoint/ptbxl_lead2_baseline_wander_mambattention/mambattention_ecg/best_pcc_model.pt \
+    --input /mnt/c/Users/中研院/data/ecg_baseline_wander/processed/test.npz \
+    --output-dir /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/inference/mambattention_test
+
+輸出：
+
+  restored_ecg.npz
+  metrics_summary.csv
+  metrics_per_window.csv
+  metrics_summary.json
+
+
+十四、Experiment 2：Baseline Strength
+
+目的：
+
+  測試模型在不同 baseline wander 強度下的魯棒性。
+
+強度：
+
+  5%、10%、20%、30%、50%
+
+指令：
+
+  python experiment_suite.py exp2-strength \
+    --config configs/ecg_baseline_wander_mecg_e.yaml \
+    --input-dir /path/to/ptbxl_records \
+    --metadata-csv /path/to/ptbxl_database.csv \
+    --noise-dir /path/to/nstdb_records \
+    --checkpoint /path/to/best_pcc_model.pt \
+    --output-root /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/controlled_tests \
+    --alpha-values 0.05,0.1,0.2,0.3,0.5
+
+輸出：
+
+  exp2_strength/summary.csv
+
+
+十五、Experiment 3：Baseline Frequency
+
+目的：
+
+  測試模型對不同低頻漂移頻率的適應能力。
+
+頻率：
+
+  0.05、0.1、0.2、0.3、0.5、0.8、1.0 Hz
+
+指令：
+
+  python experiment_suite.py exp3-frequency \
+    --config configs/ecg_baseline_wander_mecg_e.yaml \
+    --input-dir /path/to/ptbxl_records \
+    --metadata-csv /path/to/ptbxl_database.csv \
+    --checkpoint /path/to/best_pcc_model.pt \
+    --output-root /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/controlled_tests \
+    --baseline-kind sinusoidal \
+    --alpha-value 0.2 \
+    --frequencies-hz 0.05,0.1,0.2,0.3,0.5,0.8,1.0
+
+輸出：
+
+  exp3_frequency/summary.csv
+
+
+十六、Experiment 7：Ablation Study
+
+目的：
+
+  評估模型模組、loss、input feature 的影響。
+
+目前自動產生的 ablation：
+
+  full
+  no_frequency_block
+  no_consistency_loss
+  no_complex_loss
+  no_time_loss
+  complex_input
+  waveform_input
+  with_attention_block
+
+只產生 config，不訓練：
+
+  python experiment_suite.py exp7-ablation \
+    --config configs/ecg_baseline_wander_mecg_e.yaml \
+    --output-root /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander
+
+產生 config 並批次訓練：
+
+  python experiment_suite.py exp7-ablation \
+    --config configs/ecg_baseline_wander_mecg_e.yaml \
+    --output-root /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander \
+    --run-train
+
+輸出：
+
+  exp7_ablation/ablation_plan.csv
+  exp7_ablation/configs/*.yaml
+  exp7_ablation/summary.csv
+
+
+十七、結果彙整
+
+彙整所有結果成總表：
+
+  python result_analysis.py aggregate \
+    --results-root /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander \
+    --output /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/paper_tables/aggregate_metrics.csv
+
+輸出：
+
+  aggregate_metrics.csv
+
+欄位包含：
+
+  experiment
+  model_or_condition
+  dataset_or_split
+  metric
+  mean
+  std
+  count
+  mean_std
+  direction
+  source
+
+
+十八、Best / Median / Worst 案例挑選
+
+依 PRD 挑圖：
+
+  python result_analysis.py select-cases \
+    --inference-dir /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/inference/mecg_e_test \
+    --output-dir /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/case_figures/mecg_e_test \
+    --metric PRD \
+    --direction lower
+
+輸出：
+
+  best_PRD_window_*.png
+  median_PRD_window_*.png
+  worst_PRD_window_*.png
+  selected_cases.csv
+
+
+十九、統計分析
+
+比較兩個模型的 per-window metrics：
+
+  python result_analysis.py paired-stats \
+    --baseline /path/to/baseline/metrics_per_window.csv \
+    --candidate /path/to/candidate/metrics_per_window.csv \
+    --output /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/statistics/mecg_vs_baseline.csv \
+    --metrics SSD,MAD,PRD,CosSim,SNR_Improvement_dB,LF_Reduction_dB \
+    --correction holm
+
+會輸出：
+
+  paired t-test
+  Wilcoxon signed-rank test
+  Holm 或 Bonferroni correction
+  significant 標記
+
+
+二十、如何判斷結果
+
+主要看：
+
+  PRD 越低越好。
+  SSD / MAD 越低越好。
+  CosSim 越高越好。
+  SNR_Improvement_dB 越高越好。
+  LF_Reduction_dB 越高越好。
+  R_Peak_Timing_Error_ms 越低越好。
+  RR_Interval_MAE_ms 越低越好。
+  QRS_Amplitude_Error 越低越好。
+
+再看圖：
+
+  prediction_sample_*.png
+  spectrum_sample_*.png
+  best/median/worst case plots
+
+重點：
+
+  baseline drift 是否下降。
+  QRS 是否保留。
+  T wave 是否被削掉。
+  ST segment 是否被扭曲。
+  residual error 是否主要集中在低頻漂移，而不是 ECG 主形態。
+
+
+二十一、必要 Python 套件
+
+訓練與評估：
+
+  torch
+  numpy
+  scipy
+  pyyaml
+  omegaconf
+  matplotlib
+  tensorboard
+  mamba_ssm
+
+可選：
+
+  wfdb
+    直接讀 PhysioNet WFDB records。
+
+  thop
+    計算 FLOPs。
+
+
+二十二、常見問題
+
+1. 找不到資料
+
+確認：
+
+  data_dir 是否正確。
+  processed/train.npz 是否存在。
+  processed/val.npz 是否存在。
+  processed/test.npz 是否存在。
+
+2. PTB-XL fold 錯誤
+
+如果 NPZ 內有 fold / strat_fold / ptbxl_fold metadata，dataset loader 會檢查：
+
+  train 只能是 folds 1-8。
+  val 只能是 fold 9。
+  test 只能是 fold 10。
+
+3. shape 錯誤
+
+只接受：
+
+  [N, T]
+  [N, 1, T]
+
+不接受：
+
+  [N, 12, T]
+
+如果是 12-lead ECG，先用 preprocess_ecg.py 抽 Lead II。
+
+4. mamba_ssm import error
+
+代表環境沒有裝 Mamba SSM。
+
+5. FLOPs 是 NaN
+
+代表沒有安裝 thop。
+訓練仍可進行，只是 complexity_summary.yaml 的 FLOPs 為 NaN。
+
+
+二十三、建議完整流程
+
+1. 準備 PTB-XL、NSTDB、external datasets。
+
+2. 用 preprocess_ecg.py 產生：
+
+  train.npz
+  val.npz
+  test.npz
+  mit_bih.npz
+  chapman.npz
+  cpsc.npz
+
+3. 小測試 MECG-E。
+
+4. 完整訓練 MECG-E。
+
+5. 完整訓練 MambAttention。
+
+6. 跑 external test。
+
+7. 跑 Experiment 2。
+
+8. 跑 Experiment 3。
+
+9. 跑 Experiment 7。
+
+10. 用 result_analysis.py aggregate 做總表。
+
+11. 用 result_analysis.py paired-stats 做統計比較。
+
+12. 用 result_analysis.py select-cases 挑 best/median/worst 圖。
+
+
+一句話總結：
+本專案現在是「ECG records -> preprocess_ecg.py -> train/val/test/external NPZ -> train_supervised.py / inference.py -> experiment_suite.py -> result_analysis.py」的完整 ECG Baseline Wander Removal 實驗流程。

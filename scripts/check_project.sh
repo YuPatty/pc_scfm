@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DATA_DIR="${DATA_DIR:-/mnt/c/Users/中研院/data/ecg_baseline_wander}"
+
+echo "Project root: $ROOT_DIR"
+echo "Data root:    $DATA_DIR"
+echo
+
+echo "Required data files:"
+for file in train.npz val.npz test.npz; do
+  path="$DATA_DIR/processed/$file"
+  if [[ -f "$path" ]]; then
+    echo "  OK      $path"
+  else
+    echo "  MISSING $path"
+  fi
+done
+
+echo
+echo "Python syntax check:"
+cd "$ROOT_DIR"
+python3 -X pycache_prefix=/tmp/rl_exp_pycache -m py_compile \
+  src/models/mecg_e.py \
+  src/models/mambattention.py \
+  src/models/pc_scfm.py \
+  src/models/pc_scfm_components.py \
+  src/experiment_suite.py \
+  src/train_supervised.py \
+  src/inference.py
+echo "  OK"
