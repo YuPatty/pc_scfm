@@ -54,13 +54,26 @@ pc_scfm
 訓練與評估需要：
 
 ```text
+packaging
+setuptools
+wheel
+ninja
 torch
+torchaudio
 numpy
 scipy
+scikit-learn
+joblib
+tqdm
+librosa
+soundfile
 pyyaml
 omegaconf
 matplotlib
 tensorboard
+pesq
+einops
+transformers
 mamba_ssm
 ```
 
