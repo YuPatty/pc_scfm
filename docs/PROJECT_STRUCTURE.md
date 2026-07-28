@@ -30,7 +30,7 @@ All three can run the standard training, inference, external testing, strength s
 
 ## Reference Workspace
 
-`references/pc_scfm_original/` is the original/reference PC-SCFM workspace and has its own `.git`. It is ignored by the root repository so the main experiment environment stays clean.
+`references/pc_scfm_original/` is the original/reference PC-SCFM workspace. It is ignored by the root repository so the main experiment environment stays clean.
 
 Do not add new paper-facing experiment logic there unless you intentionally want to preserve a reference implementation. Port maintained behavior into `src/`.
 

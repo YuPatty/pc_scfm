@@ -72,6 +72,12 @@ ecg_baseline_wander/
     exp3_frequency/
 ```
 
+The folders above are already created at:
+
+```text
+/mnt/c/Users/中研院/data/ecg_baseline_wander
+```
+
 Use `raw/` for downloaded or extracted source datasets. Do not train directly from `raw/`.
 
 Use `processed/` for model-ready NPZ files. The dataset loader reads files from `processed/` by split name.

@@ -18,6 +18,7 @@ cd /mnt/c/Users/中研院/rl_exp/src
 configs/
   ecg_baseline_wander_mecg_e.yaml
   ecg_baseline_wander_mambattention.yaml
+  ecg_baseline_wander_pc_scfm.yaml
 
 datasets/
   ecg_baseline_wander.py
@@ -234,6 +235,16 @@ python preprocess_ecg.py \
 
 若要處理其他外部資料集，請將 `--dataset-name` 設為 `mit_bih` 或 `cpsc`。
 
+外部資料集會輸出成：
+
+```text
+mit_bih.npz
+chapman.npz
+cpsc.npz
+```
+
+這些檔案只會被訓練後評估或推論讀取，不會參與 training、validation、early stopping 或 checkpoint 選擇。
+
 只建立 test split：
 
 ```bash
@@ -285,6 +296,12 @@ python train_supervised.py
 
 ```bash
 python train_supervised.py --config configs/ecg_baseline_wander_mambattention.yaml
+```
+
+訓練 PC-SCFM：
+
+```bash
+python train_supervised.py --config configs/ecg_baseline_wander_pc_scfm.yaml
 ```
 
 先執行小型 smoke test：
@@ -543,13 +560,15 @@ exp7_ablation/summary.csv
 
 ## 14. 結果分析
 
-彙整所有結果 summary：
+彙整 inference 或 sweep 產生的 `metrics_summary.csv`：
 
 ```bash
 python result_analysis.py aggregate \
   --results-root /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander \
   --output /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/paper_tables/aggregate_metrics.csv
 ```
+
+注意：訓練結束自動評估會輸出 `metrics_*.yaml`；`aggregate` 目前不會直接彙整這些 YAML。若要進入 `aggregate` 流程，請先用 `inference.py` 對指定 checkpoint 產生 `metrics_summary.csv`，或使用 `experiment_suite.py` 產生 sweep summary。
 
 選取最佳、中位數與最差案例：
 

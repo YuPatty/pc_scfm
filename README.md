@@ -131,6 +131,41 @@ Shape 建議：
 
 更完整規則請看 `DATA_LAYOUT.md`。
 
+## 前處理
+
+訓練不會自動把原始 ECG records 轉成 NPZ。你要先執行 `src/preprocess_ecg.py`，建立 `processed/train.npz`、`processed/val.npz`、`processed/test.npz`。
+
+範例：建立 PTB-XL train/val/test。
+
+```bash
+cd /mnt/c/Users/中研院/rl_exp/src
+
+python3 preprocess_ecg.py \
+  --config configs/ecg_baseline_wander_pc_scfm.yaml \
+  --input-dir /mnt/c/Users/中研院/data/ecg_baseline_wander/raw/PTBXL/records100 \
+  --metadata-csv /mnt/c/Users/中研院/data/ecg_baseline_wander/raw/PTBXL/ptbxl_database.csv \
+  --noise-dir /mnt/c/Users/中研院/data/ecg_baseline_wander/raw/NSTDB \
+  --dataset-name ptbxl
+```
+
+範例：建立外部測試 NPZ。
+
+```bash
+python3 preprocess_ecg.py \
+  --config configs/ecg_baseline_wander_pc_scfm.yaml \
+  --input-dir /mnt/c/Users/中研院/data/ecg_baseline_wander/raw/MITBIH \
+  --noise-dir /mnt/c/Users/中研院/data/ecg_baseline_wander/raw/NSTDB \
+  --dataset-name mit_bih
+```
+
+外部資料集請把 `--dataset-name` 換成：
+
+```text
+mit_bih
+chapman
+cpsc
+```
+
 ## 訓練模型
 
 建議從專案根目錄使用 `scripts/train_model.sh`。
