@@ -11,7 +11,7 @@ from utils import (
     plot_loss_curves,
     plot_prediction_results,
     get_reconstruction_metrics,
-    compute_val_pcc,
+    reconstruction_metrics_from_arrays,
     profile_model_complexity,
 )
 import yaml 
@@ -34,9 +34,9 @@ def _save_training_state(
     best_val_pcc,
     patience_counter,
     train_losses,
-    train_val_losses,
     val_losses,
     val_pccs,
+    val_metric_history,
     args,
 ):
     torch.save(
@@ -49,9 +49,9 @@ def _save_training_state(
             "best_val_pcc": best_val_pcc,
             "patience_counter": patience_counter,
             "train_losses": train_losses,
-            "train_val_losses": train_val_losses,
             "val_losses": val_losses,
             "val_pccs": val_pccs,
+            "val_metric_history": val_metric_history,
             "config": OmegaConf.to_container(args, resolve=True),
         },
         path,
@@ -73,6 +73,25 @@ def train():
     exp_name = args.exp_name 
     model_name = args.model_name 
     writer = None 
+    metric_display_map = {
+        'SSD': 'SSD (↓)',
+        'MAD': 'MAD (↓)',
+        'PRD': 'PRD % (↓)',
+        'CosSim': 'CosSim (↑)',
+        'Output_SNR_dB': 'Output SNR dB (↑)',
+        'SNR_Improvement_dB': 'SNR Improvement dB (↑)',
+        'LF_Reduction_dB': 'LF Reduction dB (↑)',
+        'R_Peak_Timing_Error_ms': 'R-Peak Timing Error ms (↓)',
+        'RR_Interval_MAE_ms': 'RR Interval MAE ms (↓)',
+        'RMSE': 'RMSE (↓)',
+        'Centered_CosSim': 'Centered CosSim (↑)',
+        'QRS_Amplitude_Error': 'QRS Amplitude Error (↓)',
+        'Parameters': 'Parameters',
+        'Trainable_Parameters': 'Trainable Parameters',
+        'FLOPs': 'FLOPs',
+        'Inference_Time_ms': 'Inference Time ms',
+        'Peak_Memory_MB': 'Peak Memory MB',
+    }
     
     # Build a run tag from loss weights so each parameter combination gets its own dir
     _W_KEYS   = ['mse_w', 'pcc_w', 'spec_mag_w', 'spec_phase_w', 'grad_w', 'amp_w',
@@ -151,7 +170,6 @@ def train():
 
     dataset_kwargs = OmegaConf.to_container(args.dataset, resolve=True)
     train_dataset = get_dataset(data_mode='train', **dataset_kwargs) 
-    train_val_dataset = get_dataset(data_mode='train_val', **dataset_kwargs) 
     val_dataset = get_dataset(data_mode='val', **dataset_kwargs) 
     test_dataset = get_dataset(data_mode='test', **dataset_kwargs) 
     
@@ -159,12 +177,6 @@ def train():
         train_dataset, 
         batch_size=args.training.batch_size, 
         shuffle=True, 
-        num_workers=4, 
-    )
-    train_val_loader = DataLoader(
-        train_val_dataset, 
-        batch_size=args.training.batch_size, 
-        shuffle=False, 
         num_workers=4, 
     )
     val_loader = DataLoader(
@@ -184,8 +196,9 @@ def train():
     logger.info("\n"+"-"*30+"Begin Training"+"-"*30+"\n")
 
     # training
-    train_losses, train_val_losses, val_losses = [], [], []
+    train_losses, val_losses = [], []
     val_pccs = []
+    val_metric_history = []
     best_val_loss = np.inf
     best_val_pcc = -np.inf
     best_model_ckpt = checkpoint_dir / 'best_model.pt'
@@ -193,6 +206,11 @@ def train():
     training_state_ckpt = checkpoint_dir / 'training_state.pt'
 
     patience = args.training.get('early_stopping_patience', 20)
+    min_delta = float(args.training.get('early_stopping_min_delta', 0.0))
+    validation_metrics_every = max(
+        int(args.training.get('validation_metrics_every', args.training.eval_every)),
+        int(args.training.eval_every),
+    )
     patience_counter = 0
     stop_training = False
 
@@ -214,9 +232,9 @@ def train():
         best_val_pcc = float(state.get("best_val_pcc", best_val_pcc))
         patience_counter = int(state.get("patience_counter", patience_counter))
         train_losses = list(state.get("train_losses", train_losses))
-        train_val_losses = list(state.get("train_val_losses", train_val_losses))
         val_losses = list(state.get("val_losses", val_losses))
         val_pccs = list(state.get("val_pccs", val_pccs))
+        val_metric_history = list(state.get("val_metric_history", val_metric_history))
         logger.info(f"Resumed training from {resume_checkpoint} at step {step}.")
 
     progress_bar = tqdm(
@@ -248,77 +266,120 @@ def train():
                 # evaluation
                 if current_step % args.training.eval_every == 0:
                     model.eval()
-                    avg_train_val_loss, avg_val_loss = 0, 0
+                    val_pcc_batches = []
+                    last_metrics_step = int(val_metric_history[-1]["step"]) if val_metric_history else None
+                    metrics_due = (
+                        last_metrics_step is None
+                        or current_step - last_metrics_step >= validation_metrics_every
+                    )
+                    avg_val_loss = None
+                    val_noisy_batches, val_clean_batches, val_pred_batches = [], [], []
 
                     with torch.no_grad():
-                        for train_val_batch in train_val_loader:
-                            avg_train_val_loss += model.compute_loss(train_val_batch, device).item()
-                        val_pcc_batches = []
+                        for val_batch in val_loader:
+                            noisy = val_batch[0].to(device)
+                            clean = val_batch[1].to(device)
+                            pred = model(noisy)
+                            pred_c = pred - pred.mean(dim=-1, keepdim=True)
+                            clean_c = clean - clean.mean(dim=-1, keepdim=True)
+                            pcc = (pred_c * clean_c).sum(dim=-1) / (
+                                pred_c.norm(dim=-1) * clean_c.norm(dim=-1) + 1e-8
+                            )
+                            val_pcc_batches.append(pcc)
+                            if metrics_due:
+                                val_noisy_batches.append(noisy.detach().cpu().numpy())
+                                val_clean_batches.append(clean.detach().cpu().numpy())
+                                val_pred_batches.append(pred.detach().cpu().numpy())
+
+                    avg_val_pcc = torch.cat([batch.flatten() for batch in val_pcc_batches]).mean().item()
+                    val_metrics = None
+                    if metrics_due:
+                        avg_val_loss = 0
                         for val_batch in val_loader:
                             avg_val_loss += model.compute_loss(val_batch, device).item()
-                            pcc = compute_val_pcc(model, val_batch, device)
-                            val_pcc_batches.append(pcc)
-
-                    avg_train_val_loss /= len(train_val_loader)
-                    avg_val_loss /= len(val_loader)
-                    avg_val_pcc = float(np.mean(val_pcc_batches))
+                        avg_val_loss /= len(val_loader)
+                        fs = args.dataset.get("resample_hz", args.model.get("sampling_rate", 250))
+                        low_freq_hz = args.get("evaluation", {}).get("low_frequency_high_hz", 0.5)
+                        val_metrics = reconstruction_metrics_from_arrays(
+                            np.concatenate(val_noisy_batches, axis=0),
+                            np.concatenate(val_clean_batches, axis=0),
+                            np.concatenate(val_pred_batches, axis=0),
+                            fs=fs,
+                            low_freq_hz=low_freq_hz,
+                            eps=args.dataset.eps,
+                        )
+                        val_metric_history.append({"step": current_step, "val_loss": avg_val_loss, **val_metrics})
+                        with open(checkpoint_dir / "validation_metrics.yaml", "w", encoding="utf-8") as f:
+                            yaml.safe_dump(val_metric_history, f, sort_keys=False)
 
                     # Calculate the average train loss over the last 'eval_every' steps
                     current_train_loss = running_train_loss / running_train_steps
-                    logger.info(
+                    log_message = (
                         f'Training iter {current_step} | train loss: {current_train_loss:.4f} | '
-                        f'train_val loss: {avg_train_val_loss:.4f} | val loss: {avg_val_loss:.4f} | '
                         f'val PCC: {avg_val_pcc:.4f}'
                     )
+                    if val_metrics is not None:
+                        log_message += (
+                            f' | val loss: {avg_val_loss:.4f} | '
+                            f'val PRD: {val_metrics["PRD"]:.4f} | '
+                            f'val SNR imp: {val_metrics["SNR_Improvement_dB"]:.4f} | '
+                            f'val LF red: {val_metrics["LF_Reduction_dB"]:.4f} | '
+                            f'val R-peak err: {val_metrics["R_Peak_Timing_Error_ms"]:.4f} ms | '
+                            f'val RR MAE: {val_metrics["RR_Interval_MAE_ms"]:.4f} ms'
+                        )
+                    logger.info(log_message)
 
                     train_losses.append(current_train_loss)
-                    train_val_losses.append(avg_train_val_loss)
-                    val_losses.append(avg_val_loss)
+                    val_losses.append(avg_val_loss if avg_val_loss is not None else float("nan"))
                     val_pccs.append(avg_val_pcc)
 
                     if writer is not None:
                         writer.add_scalar('Train/Loss', current_train_loss, step)
-                        writer.add_scalar('Train Val/Loss', avg_train_val_loss, step)
-                        writer.add_scalar('Val/Loss', avg_val_loss, step)
                         writer.add_scalar('Val/PCC', avg_val_pcc, step)
+                        if avg_val_loss is not None:
+                            writer.add_scalar('Val/Loss', avg_val_loss, step)
+                        if val_metrics is not None:
+                            for key, value in val_metrics.items():
+                                writer.add_scalar(f'Val/{key}', value, step)
 
-                    # save best model by val PCC; reset patience counter on improvement
-                    if avg_val_pcc > best_val_pcc:
+                    # Primary selection and early stopping use validation PCC only.
+                    if avg_val_pcc > best_val_pcc + min_delta:
                         logger.info(f'New best val PCC {avg_val_pcc:.4f} at iteration {current_step}! Saving model...')
                         best_val_pcc = avg_val_pcc
                         torch.save(model.state_dict(), best_pcc_model_ckpt)
                         patience_counter = 0
-                    # save best model by val loss
-                    elif avg_val_loss < best_val_loss:
-                        logger.info(f'New best val loss {avg_val_loss:.4f} at iteration {current_step}! Saving model...')
-                        best_val_loss = avg_val_loss
-                        torch.save(model.state_dict(), best_model_ckpt)
-                        patience_counter = 0
                     else:
                         patience_counter += 1
                         logger.info(f'No PCC improvement. Patience: {patience_counter}/{patience}')
-                        if patience_counter >= patience:
-                            logger.info(f'Early stopping triggered at iteration {current_step}.')
-                            torch.save(model.state_dict(), checkpoint_dir / 'model_last.pt')
-                            step = current_step
-                            progress_bar.update(1)
-                            _save_training_state(
-                                training_state_ckpt,
-                                model,
-                                optimizer,
-                                scheduler,
-                                step,
-                                best_val_loss,
-                                best_val_pcc,
-                                patience_counter,
-                                train_losses,
-                                train_val_losses,
-                                val_losses,
-                                val_pccs,
-                                args,
-                            )
-                            stop_training = True
-                            break
+
+                    # Save best validation-loss checkpoint for auxiliary analysis only.
+                    if avg_val_loss is not None and avg_val_loss < best_val_loss:
+                        logger.info(f'New best val loss {avg_val_loss:.4f} at iteration {current_step}! Saving model...')
+                        best_val_loss = avg_val_loss
+                        torch.save(model.state_dict(), best_model_ckpt)
+
+                    if patience_counter >= patience:
+                        logger.info(f'Early stopping triggered at iteration {current_step}.')
+                        torch.save(model.state_dict(), checkpoint_dir / 'model_last.pt')
+                        step = current_step
+                        progress_bar.update(1)
+                        _save_training_state(
+                            training_state_ckpt,
+                            model,
+                            optimizer,
+                            scheduler,
+                            step,
+                            best_val_loss,
+                            best_val_pcc,
+                            patience_counter,
+                            train_losses,
+                            val_losses,
+                            val_pccs,
+                            val_metric_history,
+                            args,
+                        )
+                        stop_training = True
+                        break
 
                     _save_training_state(
                         training_state_ckpt,
@@ -330,9 +391,9 @@ def train():
                         best_val_pcc,
                         patience_counter,
                         train_losses,
-                        train_val_losses,
                         val_losses,
                         val_pccs,
+                        val_metric_history,
                         args,
                     )
 
@@ -353,9 +414,9 @@ def train():
                         best_val_pcc,
                         patience_counter,
                         train_losses,
-                        train_val_losses,
                         val_losses,
                         val_pccs,
+                        val_metric_history,
                         args,
                     )
 
@@ -374,9 +435,9 @@ def train():
                         best_val_pcc,
                         patience_counter,
                         train_losses,
-                        train_val_losses,
                         val_losses,
                         val_pccs,
+                        val_metric_history,
                         args,
                     )
                     break
@@ -396,26 +457,6 @@ def train():
         f"Best val loss: {best_val_loss:.4f} | Best val PCC: {best_val_pcc:.4f}"
     )
     # final evaluation — test best checkpoints independently
-    metric_display_map = {
-        'SSD': 'SSD (↓)',
-        'MAD': 'MAD (↓)',
-        'PRD': 'PRD % (↓)',
-        'CosSim': 'CosSim (↑)',
-        'Output_SNR_dB': 'Output SNR dB (↑)',
-        'SNR_Improvement_dB': 'SNR Improvement dB (↑)',
-        'LF_Reduction_dB': 'LF Reduction dB (↑)',
-        'R_Peak_Timing_Error_ms': 'R-Peak Timing Error ms (↓)',
-        'RR_Interval_MAE_ms': 'RR Interval MAE ms (↓)',
-        'RMSE': 'RMSE (↓)',
-        'Centered_CosSim': 'Centered CosSim (↑)',
-        'QRS_Amplitude_Error': 'QRS Amplitude Error (↓)',
-        'Parameters': 'Parameters',
-        'Trainable_Parameters': 'Trainable Parameters',
-        'FLOPs': 'FLOPs',
-        'Inference_Time_ms': 'Inference Time ms',
-        'Peak_Memory_MB': 'Peak Memory MB',
-    }
-
     eval_checkpoints = [
         ('best_pcc',  best_pcc_model_ckpt),
         ('best_loss', best_model_ckpt),
@@ -433,7 +474,7 @@ def train():
         eval_dir.mkdir(parents=True, exist_ok=True)
 
         loss_curve_path = plot_loss_curves(
-            train_losses, train_val_losses, val_losses,
+            train_losses, val_losses,
             args.training.eval_every, eval_dir, val_pccs=val_pccs,
         )
         logger.info(f"Saved loss curves to {loss_curve_path}")

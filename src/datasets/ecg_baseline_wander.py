@@ -25,7 +25,7 @@ class ECGBaselineWanderDataset(Dataset):
     Dataset adapter for the ECG baseline-wander-removal benchmark.
 
     It expects preprocessed NPZ files under `processed_data_dir` or `data_dir/processed`:
-      train.npz, train_val.npz, val.npz, test.npz
+      train.npz, val.npz, test.npz
 
     External test datasets are optional and use the same NPZ schema:
       mit_bih.npz, chapman.npz, cpsc.npz
@@ -39,7 +39,6 @@ class ECGBaselineWanderDataset(Dataset):
 
     split_file_map = {
         "train": "train.npz",
-        "train_val": "train_val.npz",
         "val": "val.npz",
         "test": "test.npz",
         "mit_bih": "mit_bih.npz",
@@ -58,8 +57,6 @@ class ECGBaselineWanderDataset(Dataset):
         processed_dir = Path(kwargs.get("processed_data_dir", data_dir / "processed"))
         split_path = processed_dir / self.split_file_map[data_mode]
 
-        if not split_path.exists() and data_mode == "train_val":
-            split_path = processed_dir / self.split_file_map["val"]
         if not split_path.exists():
             raise FileNotFoundError(
                 f"Missing preprocessed ECG split: {split_path}. Create NPZ files with "
@@ -90,7 +87,7 @@ class ECGBaselineWanderDataset(Dataset):
         return self.noisy[index], self.clean[index]
 
     def _validate_ptbxl_fold_metadata(self, loaded, data_mode, split_config):
-        if data_mode not in {"train", "train_val", "val", "test"}:
+        if data_mode not in {"train", "val", "test"}:
             return
         if not isinstance(split_config, dict) or split_config.get("strategy") != "ptbxl_official_folds":
             return
@@ -101,7 +98,10 @@ class ECGBaselineWanderDataset(Dataset):
                 fold_key = candidate
                 break
         if fold_key is None:
-            return
+            raise ValueError(
+                f"{data_mode}.npz is used with ptbxl_official_folds but does not contain "
+                "ptbxl_fold/strat_fold/fold metadata."
+            )
 
         folds = np.asarray(loaded[fold_key], dtype=np.int64)
         if folds.shape[0] != len(self.noisy):
@@ -111,7 +111,7 @@ class ECGBaselineWanderDataset(Dataset):
 
         if data_mode == "train":
             expected = set(split_config.get("train_folds", []))
-        elif data_mode in {"train_val", "val"}:
+        elif data_mode == "val":
             expected = {int(split_config.get("validation_fold", 9))}
         else:
             expected = {int(split_config.get("test_fold", 10))}

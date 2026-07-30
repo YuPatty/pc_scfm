@@ -54,7 +54,6 @@ ecg_baseline_wander/
 
   processed/
     train.npz
-    train_val.npz
     val.npz
     test.npz
     mit_bih.npz
@@ -92,7 +91,6 @@ Recommended files:
 
 ```text
 processed/train.npz
-processed/train_val.npz
 processed/val.npz
 processed/test.npz
 processed/mit_bih.npz
@@ -100,7 +98,7 @@ processed/chapman.npz
 processed/cpsc.npz
 ```
 
-If `train_val.npz` is missing, the loader falls back to `val.npz` for train-validation evaluation.
+Training uses `val.npz` as the PTB-XL fold 9 validation split for checkpoint selection and early stopping. PTB-XL train/val/test NPZ files must include fold metadata so the loader can enforce the official fold split.
 
 ## NPZ Schema
 

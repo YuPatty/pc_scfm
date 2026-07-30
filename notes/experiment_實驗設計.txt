@@ -348,17 +348,24 @@ Early stopping 與模型選擇原則：
 - Model selection 僅使用 PTB-XL validation fold 9。
 - External test datasets，包括 MIT-BIH、Chapman、CPSC，不得用於 early stopping、checkpoint selection 或 hyperparameter tuning。
 - 每 100 training iterations 進行一次 validation evaluation。
-- Early stopping patience 設為 50 次 validation evaluations；也就是連續 50 次 validation evaluation 未達成主要改善時停止訓練。
+- Early stopping patience 設為 25 次 validation evaluations；也就是連續 25 次 validation evaluation 未達成主要改善時停止訓練。
 - 主要模型選擇指標使用 validation PCC，因為 Baseline Wander Removal 需重視 restored ECG 與 clean reference 的波形一致性與 morphology preservation。
+- Validation PCC 需改善至少 1.0e-4 才視為有效改善並重置 patience，避免浮點誤差或極小波動延後 early stopping。
+- Validation 階段第一次 evaluation 與之後每 500 training iterations 同步記錄 validation loss、PRD、SNR improvement、low-frequency power reduction、R-peak timing error 與 RR interval MAE，作為 sanity check 與訓練曲線分析；這些指標不參與 patience reset。
 - 主要回報 checkpoint 採用 best validation PCC checkpoint。
 - 同時保存 best validation loss checkpoint 作為輔助分析，但正式主結果以 best validation PCC checkpoint 為準。
-- 若 validation PCC 無改善但 validation loss 改善，可保存 best loss checkpoint，但不應改變主要模型選擇標準。
+- 若 validation PCC 無改善但 validation loss 改善，可保存 best loss checkpoint，但不重置 patience，也不改變主要模型選擇標準。
+- Validation loss 因各模型 loss 組成不同，不可作為跨模型效能比較指標；尤其 PC-SCFM 含有 flow、behavior cloning、value 與 risk 等 auxiliary losses。
+- 訓練結束後可輸出 best validation loss checkpoint 的測試結果作為診斷，但正式表格、統計分析與 robustness summary 必須預設使用 best validation PCC checkpoint。
+- 正式 ablation summary 預設只彙整 best validation PCC checkpoint；best validation loss checkpoint 僅在輔助分析時另行納入。
+- PTB-XL train / validation / test NPZ 必須包含 fold metadata，loader 需強制檢查 folds 1-8 / 9 / 10 是否符合設定。
 - 所有模型的最大訓練步數、validation interval、patience、batch size、optimizer 與 learning rate schedule 應固定一致，除非某模型原論文有不可避免的特殊設定；若有特殊設定必須明確報告。
 
 統計分析建議：
 - 對每個 ECG window 計算指標。
 - 每個 dataset 回報 mean ± standard deviation。
 - 模型間比較使用 paired statistical test。
+- 因固定長度切片使用 overlap windows，window-wise samples 不應被解讀為完全獨立個體；若 metadata 足夠，建議補充 record-level 或 patient-level aggregation 作為 sensitivity analysis。
 - 若分布不符合常態，可使用 Wilcoxon signed-rank test。
 - 多重比較使用 Bonferroni 或 Holm correction。
 - 顯著水準 alpha = 0.05。
@@ -412,6 +419,7 @@ Early stopping 與模型選擇原則：
 
 3. Baseline Wander 合成細節
 - NSTDB 如何取樣、裁切、重取樣、scaling、對齊 window 都要可重現。
+- 目前 processed NPZ 內的 noisy ECG 為前處理階段固定合成，訓練時不是 on-the-fly augmentation；需在方法中說明，並將 training-time random baseline augmentation 視為後續可降低污染型態 overfitting 的改進方向。
 
 4. Controlled robustness test
 - 不應只使用單一 NSTDB baseline。
@@ -472,7 +480,7 @@ Early stopping 與模型選擇原則：
 - Validation：fold 9，約 10%。
 - In-domain test：fold 10，約 10%。
 - External test：mit_bih.npz、chapman.npz、cpsc.npz，100% test only。
-- Dataset loader 若 NPZ 內有 fold metadata，會檢查 train/val/test 是否符合 official folds。
+- Dataset loader 會要求 PTB-XL train/val/test NPZ 具備 fold metadata，並檢查 train/val/test 是否符合 official folds。
 
 3. Baseline Wander 合成
 - 程式：code/preprocess_ecg.py。

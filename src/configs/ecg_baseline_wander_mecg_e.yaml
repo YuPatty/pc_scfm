@@ -16,9 +16,11 @@ training:
   batch_size: 32
   train_iterations: 20000
   eval_every: 100
+  validation_metrics_every: 500
   save_every: 5000
   lr: 1.0e-4
-  early_stopping_patience: 50
+  early_stopping_patience: 25
+  early_stopping_min_delta: 1.0e-4
   progress_bar: True
   resume: False
   resume_checkpoint: null

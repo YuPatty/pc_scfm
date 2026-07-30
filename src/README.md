@@ -132,13 +132,12 @@ test.npz
 選用檔案：
 
 ```text
-train_val.npz
 mit_bih.npz
 chapman.npz
 cpsc.npz
 ```
 
-如果缺少 `train_val.npz`，會使用 `val.npz` 進行 train-validation 監控。
+訓練時只使用 `val.npz` 作為 PTB-XL fold 9 validation 監控與 checkpoint selection。
 
 ## 5. NPZ 格式
 
@@ -612,10 +611,14 @@ training:
   batch_size: 32
   train_iterations: 20000
   eval_every: 100
+  validation_metrics_every: 500
   save_every: 5000
   lr: 1.0e-4
-  early_stopping_patience: 50
+  early_stopping_patience: 25
+  early_stopping_min_delta: 1.0e-4
 ```
+
+Early stopping 只由 validation PCC 控制；每 100 iterations 用 PTB-XL fold 9 計算 validation PCC。Validation loss 只保存輔助 `best_model.pt`，不重置 patience。訓練時第一次 validation 與之後每 500 iterations 會在 `checkpoint/<exp_name>/<model_name>/validation_metrics.yaml` 記錄 validation loss、PRD、SNR improvement、low-frequency reduction、R-peak timing error 與 RR interval MAE 作為 sanity check。
 
 命令列範例：
 

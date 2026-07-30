@@ -34,6 +34,7 @@ def parse_args():
     exp7.add_argument("--train-iterations", type=int, default=None)
     exp7.add_argument("--eval-every", type=int, default=None)
     exp7.add_argument("--summarize-only", action="store_true")
+    exp7.add_argument("--include-best-loss", action="store_true")
     return parser.parse_args()
 
 
@@ -337,7 +338,7 @@ def run_exp7_ablation(args):
         for row in plan_rows:
             run_command([sys.executable, SCRIPT_DIR / "train_supervised.py", "--config", row["config"]])
 
-    summarize_ablation(root, plan_rows)
+    summarize_ablation(root, plan_rows, include_best_loss=args.include_best_loss)
 
 
 def write_plan_csv(path, rows):
@@ -348,14 +349,15 @@ def write_plan_csv(path, rows):
         writer.writerows(rows)
 
 
-def summarize_ablation(root, plan_rows):
+def summarize_ablation(root, plan_rows, include_best_loss=False):
     summary_path = root / "exp7_ablation" / "summary.csv"
     rows = []
+    checkpoint_names = ["best_pcc", "best_loss"] if include_best_loss else ["best_pcc"]
     for plan in plan_rows:
         cfg = load_yaml(plan["config"])
         result_base = Path(cfg["results_dir"].replace("${root_dir}", cfg["root_dir"])) / cfg["exp_name"]
         model_dir = result_base / cfg["model_name"]
-        for checkpoint_name in ["best_pcc", "best_loss"]:
+        for checkpoint_name in checkpoint_names:
             metrics_path = model_dir / checkpoint_name / "metrics_ptbxl_fold10_test.yaml"
             complexity_path = model_dir / checkpoint_name / "complexity_summary.yaml"
             if not metrics_path.exists():

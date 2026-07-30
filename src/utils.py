@@ -60,7 +60,7 @@ def setup_logger(args, log_dir) -> logging.Logger:
     return logger
 
 
-def plot_loss_curves(train_losses, train_val_losses, val_losses, eval_every, results_dir, val_pccs=None):
+def plot_loss_curves(train_losses, val_losses, eval_every, results_dir, val_pccs=None):
     loss_curves_dir = Path(results_dir) / "loss_curves"
     loss_curves_dir.mkdir(parents=True, exist_ok=True)
 
@@ -78,23 +78,34 @@ def plot_loss_curves(train_losses, train_val_losses, val_losses, eval_every, res
         plt.close(fig)
 
     save_curve(train_losses, np.arange(1, len(train_losses) + 1), "Train Loss", "train_loss.png", "loss")
-    eval_steps = np.arange(1, len(train_val_losses) + 1) * eval_every
-    save_curve(train_val_losses, eval_steps, "Train Val Loss", "train_val_loss.png", "loss")
-    save_curve(val_losses, eval_steps, "Val Loss", "val_loss.png", "loss")
+    val_steps = np.arange(1, len(val_losses) + 1) * eval_every
+    save_curve(val_losses, val_steps, "Val Loss", "val_loss.png", "loss")
     if val_pccs:
-        save_curve(val_pccs, eval_steps, "Val PCC", "val_pcc.png", "PCC")
+        val_pcc_steps = np.arange(1, len(val_pccs) + 1) * eval_every
+        save_curve(val_pccs, val_pcc_steps, "Val PCC", "val_pcc.png", "PCC")
     return loss_curves_dir
 
 
-def compute_val_pcc(model, val_batch, device):
-    noisy, clean = val_batch[0].to(device), val_batch[1].to(device)
-    pred = model(noisy)
-    pred_c = pred - pred.mean(dim=-1, keepdim=True)
-    clean_c = clean - clean.mean(dim=-1, keepdim=True)
-    pcc = (pred_c * clean_c).sum(dim=-1) / (
-        pred_c.norm(dim=-1) * clean_c.norm(dim=-1) + 1e-8
-    )
-    return pcc.mean().item()
+def reconstruction_metrics_from_arrays(noisy, clean, pred, fs=250, low_freq_hz=0.5, eps=1e-10):
+    noisy = np.squeeze(np.asarray(noisy), axis=1)
+    clean = np.squeeze(np.asarray(clean), axis=1)
+    pred = np.squeeze(np.asarray(pred), axis=1)
+    return {
+        "SSD": float(np.mean(ssd(clean, pred))),
+        "MAD": float(np.mean(maximum_absolute_distance(clean, pred))),
+        "PRD": float(np.mean(prd(clean, pred, eps=eps))),
+        "CosSim": float(np.mean(cosine_similarity(clean, pred, eps=eps))),
+        "Output_SNR_dB": float(np.mean(snr_db(clean, pred, eps=eps))),
+        "SNR_Improvement_dB": float(np.mean(snr_improvement_db(clean, noisy, pred, eps=eps))),
+        "LF_Reduction_dB": float(
+            np.mean(low_frequency_power_reduction(noisy, pred, fs=fs, high_hz=low_freq_hz, eps=eps))
+        ),
+        "R_Peak_Timing_Error_ms": nanmean_or_nan(r_peak_timing_error_ms(clean, pred, fs=fs)),
+        "RR_Interval_MAE_ms": nanmean_or_nan(rr_interval_mae_ms(clean, pred, fs=fs)),
+        "RMSE": float(np.sqrt(np.mean((clean - pred) ** 2))),
+        "Centered_CosSim": float(np.mean(centered_cosine_similarity(clean, pred, eps=eps))),
+        "QRS_Amplitude_Error": nanmean_or_nan(qrs_amplitude_error(clean, pred, fs=fs)),
+    }
 
 
 def plot_prediction_results(model, dataset, device, results_dir, num_samples=3, seed=42, eps=1e-10, fs=250):
@@ -212,25 +223,14 @@ def get_reconstruction_metrics(model, test_loader, device, fs=250, low_freq_hz=0
             clean_all.append(clean.detach().cpu().numpy())
             pred_all.append(pred.detach().cpu().numpy())
 
-    noisy = np.squeeze(np.concatenate(noisy_all, axis=0), axis=1)
-    clean = np.squeeze(np.concatenate(clean_all, axis=0), axis=1)
-    pred = np.squeeze(np.concatenate(pred_all, axis=0), axis=1)
-    return {
-        "SSD": float(np.mean(ssd(clean, pred))),
-        "MAD": float(np.mean(maximum_absolute_distance(clean, pred))),
-        "PRD": float(np.mean(prd(clean, pred, eps=eps))),
-        "CosSim": float(np.mean(cosine_similarity(clean, pred, eps=eps))),
-        "Output_SNR_dB": float(np.mean(snr_db(clean, pred, eps=eps))),
-        "SNR_Improvement_dB": float(np.mean(snr_improvement_db(clean, noisy, pred, eps=eps))),
-        "LF_Reduction_dB": float(
-            np.mean(low_frequency_power_reduction(noisy, pred, fs=fs, high_hz=low_freq_hz, eps=eps))
-        ),
-        "R_Peak_Timing_Error_ms": nanmean_or_nan(r_peak_timing_error_ms(clean, pred, fs=fs)),
-        "RR_Interval_MAE_ms": nanmean_or_nan(rr_interval_mae_ms(clean, pred, fs=fs)),
-        "RMSE": float(np.sqrt(np.mean((clean - pred) ** 2))),
-        "Centered_CosSim": float(np.mean(centered_cosine_similarity(clean, pred, eps=eps))),
-        "QRS_Amplitude_Error": nanmean_or_nan(qrs_amplitude_error(clean, pred, fs=fs)),
-    }
+    return reconstruction_metrics_from_arrays(
+        np.concatenate(noisy_all, axis=0),
+        np.concatenate(clean_all, axis=0),
+        np.concatenate(pred_all, axis=0),
+        fs=fs,
+        low_freq_hz=low_freq_hz,
+        eps=eps,
+    )
 
 
 def profile_model_complexity(model, device, input_length, batch_size=1, warmup=5, repeats=20):
