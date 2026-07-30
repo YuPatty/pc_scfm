@@ -9,6 +9,8 @@ exp_name: ptbxl_lead2_baseline_wander_mambattention
 model_name: mambattention_ecg
 seed: 42
 log_tensorboard: True
+log_config: False
+log_model_architecture: False
 
 training:
   batch_size: 32
@@ -17,6 +19,7 @@ training:
   save_every: 5000
   lr: 1.0e-4
   early_stopping_patience: 50
+  progress_bar: True
   resume: False
   resume_checkpoint: null
 

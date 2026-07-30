@@ -18,6 +18,7 @@ import yaml
 import time 
 import shutil 
 import argparse
+from tqdm.auto import tqdm
 
 from models import get_model 
 from datasets import get_dataset 
@@ -110,9 +111,15 @@ def train():
     
     # print config 
     logger = setup_logger(args, log_dir) 
-    logger.info("\n"+"-"*30+"Running with configs"+"-"*30+"\n")
-    logger.info(yaml.dump(OmegaConf.to_container(args, resolve=True), indent=4))
-    logger.info(separator+"\n")
+    if args.get("log_config", False):
+        logger.info("\n"+"-"*30+"Running with configs"+"-"*30+"\n")
+        logger.info(yaml.dump(OmegaConf.to_container(args, resolve=True), indent=4))
+        logger.info(separator+"\n")
+    else:
+        logger.info(
+            f"Run: exp_name={exp_name} | model_name={model_name} | "
+            f"train_iterations={args.training.train_iterations} | batch_size={args.training.batch_size}"
+        )
     
     # setup tensorboard 
     if args.get('log_tensorboard', True):
@@ -137,8 +144,9 @@ def train():
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.training.train_iterations, eta_min=1e-5
     )
-    logger.info("\n"+"-"*30+"Model Architecture"+"-"*30+"\n")
-    logger.info(f'{model}\n')
+    if args.get("log_model_architecture", False):
+        logger.info("\n"+"-"*30+"Model Architecture"+"-"*30+"\n")
+        logger.info(f'{model}\n')
     logger.info(f'model size: {sum(param.numel() for param in model.parameters())} parameters')
 
     dataset_kwargs = OmegaConf.to_container(args.dataset, resolve=True)
@@ -211,156 +219,176 @@ def train():
         val_pccs = list(state.get("val_pccs", val_pccs))
         logger.info(f"Resumed training from {resume_checkpoint} at step {step}.")
 
-    while step < args.training.train_iterations and not stop_training:
-        # logger.info(f'Training iteration {step+1}')
-        model.train()
+    progress_bar = tqdm(
+        total=args.training.train_iterations,
+        initial=step,
+        desc=f"Training {model_name}",
+        unit="iter",
+        dynamic_ncols=True,
+        disable=not args.training.get("progress_bar", True),
+    )
 
-        for train_batch in train_loader:
-            optimizer.zero_grad() 
-            train_loss = model.compute_loss(train_batch, device)
-            train_loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
-            scheduler.step()
-            
-            running_train_loss += train_loss.item() 
-            running_train_steps += 1
-                        
-            # evaluation
-            if (step+1) % args.training.eval_every == 0:
-                model.eval()
-                avg_train_val_loss, avg_val_loss = 0, 0
+    try:
+        while step < args.training.train_iterations and not stop_training:
+            # logger.info(f'Training iteration {step+1}')
+            model.train()
 
-                with torch.no_grad():
-                    for train_val_batch in train_val_loader:
-                        avg_train_val_loss += model.compute_loss(train_val_batch, device).item()
-                    val_pcc_batches = []
-                    for val_batch in val_loader:
-                        avg_val_loss += model.compute_loss(val_batch, device).item()
-                        pcc = compute_val_pcc(model, val_batch, device)
-                        val_pcc_batches.append(pcc)
+            for train_batch in train_loader:
+                optimizer.zero_grad()
+                train_loss = model.compute_loss(train_batch, device)
+                train_loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
+                scheduler.step()
 
-                avg_train_val_loss /= len(train_val_loader)
-                avg_val_loss /= len(val_loader)
-                avg_val_pcc = float(np.mean(val_pcc_batches))
+                running_train_loss += train_loss.item()
+                running_train_steps += 1
+                current_step = step + 1
 
-                # Calculate the average train loss over the last 'eval_every' steps
-                current_train_loss = running_train_loss / running_train_steps
-                logger.info(
-                    f'Training iter {step+1} | train loss: {current_train_loss:.4f} | '
-                    f'train_val loss: {avg_train_val_loss:.4f} | val loss: {avg_val_loss:.4f} | '
-                    f'val PCC: {avg_val_pcc:.4f}'
+                # evaluation
+                if current_step % args.training.eval_every == 0:
+                    model.eval()
+                    avg_train_val_loss, avg_val_loss = 0, 0
+
+                    with torch.no_grad():
+                        for train_val_batch in train_val_loader:
+                            avg_train_val_loss += model.compute_loss(train_val_batch, device).item()
+                        val_pcc_batches = []
+                        for val_batch in val_loader:
+                            avg_val_loss += model.compute_loss(val_batch, device).item()
+                            pcc = compute_val_pcc(model, val_batch, device)
+                            val_pcc_batches.append(pcc)
+
+                    avg_train_val_loss /= len(train_val_loader)
+                    avg_val_loss /= len(val_loader)
+                    avg_val_pcc = float(np.mean(val_pcc_batches))
+
+                    # Calculate the average train loss over the last 'eval_every' steps
+                    current_train_loss = running_train_loss / running_train_steps
+                    logger.info(
+                        f'Training iter {current_step} | train loss: {current_train_loss:.4f} | '
+                        f'train_val loss: {avg_train_val_loss:.4f} | val loss: {avg_val_loss:.4f} | '
+                        f'val PCC: {avg_val_pcc:.4f}'
+                    )
+
+                    train_losses.append(current_train_loss)
+                    train_val_losses.append(avg_train_val_loss)
+                    val_losses.append(avg_val_loss)
+                    val_pccs.append(avg_val_pcc)
+
+                    if writer is not None:
+                        writer.add_scalar('Train/Loss', current_train_loss, step)
+                        writer.add_scalar('Train Val/Loss', avg_train_val_loss, step)
+                        writer.add_scalar('Val/Loss', avg_val_loss, step)
+                        writer.add_scalar('Val/PCC', avg_val_pcc, step)
+
+                    # save best model by val PCC; reset patience counter on improvement
+                    if avg_val_pcc > best_val_pcc:
+                        logger.info(f'New best val PCC {avg_val_pcc:.4f} at iteration {current_step}! Saving model...')
+                        best_val_pcc = avg_val_pcc
+                        torch.save(model.state_dict(), best_pcc_model_ckpt)
+                        patience_counter = 0
+                    # save best model by val loss
+                    elif avg_val_loss < best_val_loss:
+                        logger.info(f'New best val loss {avg_val_loss:.4f} at iteration {current_step}! Saving model...')
+                        best_val_loss = avg_val_loss
+                        torch.save(model.state_dict(), best_model_ckpt)
+                        patience_counter = 0
+                    else:
+                        patience_counter += 1
+                        logger.info(f'No PCC improvement. Patience: {patience_counter}/{patience}')
+                        if patience_counter >= patience:
+                            logger.info(f'Early stopping triggered at iteration {current_step}.')
+                            torch.save(model.state_dict(), checkpoint_dir / 'model_last.pt')
+                            step = current_step
+                            progress_bar.update(1)
+                            _save_training_state(
+                                training_state_ckpt,
+                                model,
+                                optimizer,
+                                scheduler,
+                                step,
+                                best_val_loss,
+                                best_val_pcc,
+                                patience_counter,
+                                train_losses,
+                                train_val_losses,
+                                val_losses,
+                                val_pccs,
+                                args,
+                            )
+                            stop_training = True
+                            break
+
+                    _save_training_state(
+                        training_state_ckpt,
+                        model,
+                        optimizer,
+                        scheduler,
+                        current_step,
+                        best_val_loss,
+                        best_val_pcc,
+                        patience_counter,
+                        train_losses,
+                        train_val_losses,
+                        val_losses,
+                        val_pccs,
+                        args,
+                    )
+
+                    # Reset running training metrics
+                    running_train_loss = 0
+                    running_train_steps = 0
+                    model.train()
+
+                if args.training.get("save_every", 0) and current_step % args.training.save_every == 0:
+                    torch.save(model.state_dict(), checkpoint_dir / f'model_step_{current_step}.pt')
+                    _save_training_state(
+                        training_state_ckpt,
+                        model,
+                        optimizer,
+                        scheduler,
+                        current_step,
+                        best_val_loss,
+                        best_val_pcc,
+                        patience_counter,
+                        train_losses,
+                        train_val_losses,
+                        val_losses,
+                        val_pccs,
+                        args,
+                    )
+
+                if current_step >= args.training.train_iterations:
+                    logger.info(f'Saving last model')
+                    torch.save(model.state_dict(), checkpoint_dir / 'model_last.pt')
+                    step = current_step
+                    progress_bar.update(1)
+                    _save_training_state(
+                        training_state_ckpt,
+                        model,
+                        optimizer,
+                        scheduler,
+                        step,
+                        best_val_loss,
+                        best_val_pcc,
+                        patience_counter,
+                        train_losses,
+                        train_val_losses,
+                        val_losses,
+                        val_pccs,
+                        args,
+                    )
+                    break
+
+                step = current_step
+                progress_bar.update(1)
+                progress_bar.set_postfix(
+                    train_loss=f"{train_loss.item():.4f}",
+                    patience=f"{patience_counter}/{patience}",
                 )
-
-                train_losses.append(current_train_loss)
-                train_val_losses.append(avg_train_val_loss)
-                val_losses.append(avg_val_loss)
-                val_pccs.append(avg_val_pcc)
-
-                if writer is not None:
-                    writer.add_scalar('Train/Loss', current_train_loss, step)
-                    writer.add_scalar('Train Val/Loss', avg_train_val_loss, step)
-                    writer.add_scalar('Val/Loss', avg_val_loss, step)
-                    writer.add_scalar('Val/PCC', avg_val_pcc, step)
-
-                # save best model by val PCC; reset patience counter on improvement
-                if avg_val_pcc > best_val_pcc:
-                    logger.info(f'New best val PCC {avg_val_pcc:.4f} at iteration {step+1}! Saving model...')
-                    best_val_pcc = avg_val_pcc
-                    torch.save(model.state_dict(), best_pcc_model_ckpt)
-                    patience_counter = 0
-                # save best model by val loss
-                elif avg_val_loss < best_val_loss:
-                    logger.info(f'New best val loss {avg_val_loss:.4f} at iteration {step+1}! Saving model...')
-                    best_val_loss = avg_val_loss
-                    torch.save(model.state_dict(), best_model_ckpt)
-                    patience_counter = 0
-                else:
-                    patience_counter += 1
-                    logger.info(f'No PCC improvement. Patience: {patience_counter}/{patience}')
-                    if patience_counter >= patience:
-                        logger.info(f'Early stopping triggered at iteration {step+1}.')
-                        torch.save(model.state_dict(), checkpoint_dir / 'model_last.pt')
-                        step += 1
-                        _save_training_state(
-                            training_state_ckpt,
-                            model,
-                            optimizer,
-                            scheduler,
-                            step,
-                            best_val_loss,
-                            best_val_pcc,
-                            patience_counter,
-                            train_losses,
-                            train_val_losses,
-                            val_losses,
-                            val_pccs,
-                            args,
-                        )
-                        stop_training = True
-                        break
-
-                _save_training_state(
-                    training_state_ckpt,
-                    model,
-                    optimizer,
-                    scheduler,
-                    step + 1,
-                    best_val_loss,
-                    best_val_pcc,
-                    patience_counter,
-                    train_losses,
-                    train_val_losses,
-                    val_losses,
-                    val_pccs,
-                    args,
-                )
-
-                # Reset running training metrics
-                running_train_loss = 0
-                running_train_steps = 0
-                model.train()
-
-            if args.training.get("save_every", 0) and (step+1) % args.training.save_every == 0:
-                torch.save(model.state_dict(), checkpoint_dir / f'model_step_{step+1}.pt')
-                _save_training_state(
-                    training_state_ckpt,
-                    model,
-                    optimizer,
-                    scheduler,
-                    step + 1,
-                    best_val_loss,
-                    best_val_pcc,
-                    patience_counter,
-                    train_losses,
-                    train_val_losses,
-                    val_losses,
-                    val_pccs,
-                    args,
-                )
-
-            if (step+1) >= args.training.train_iterations:
-                logger.info(f'Saving last model')
-                torch.save(model.state_dict(), checkpoint_dir / 'model_last.pt') 
-                step += 1
-                _save_training_state(
-                    training_state_ckpt,
-                    model,
-                    optimizer,
-                    scheduler,
-                    step,
-                    best_val_loss,
-                    best_val_pcc,
-                    patience_counter,
-                    train_losses,
-                    train_val_losses,
-                    val_losses,
-                    val_pccs,
-                    args,
-                )
-                break 
-            
-            step += 1           
+    finally:
+        progress_bar.close()
             
     # print(f"Training complete after {(time.time()-START_TIME)/60:.2f} minutes. Best val loss: {best_val_loss:.4f}")
     logger.info(
