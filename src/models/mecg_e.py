@@ -661,6 +661,8 @@ class MECGECore(nn.Module):
                 "alpha": action["alpha"],
                 "alpha_safe": alpha_safe,
                 "weights": weights,
+                "stop_logit": action["stop_logit"],
+                "reject_logit": action["reject_logit"],
                 "stop_prob": action["stop_prob"],
                 "reject_prob": action["reject_prob"],
                 "weight_index": action.get("weight_index", action["weights"].squeeze(-1).argmax(dim=-1, keepdim=True)),
@@ -843,8 +845,16 @@ class MECGECore(nn.Module):
                     continue
                 alpha_loss = F.mse_loss(item["alpha"], item["oracle_alpha"].detach())
                 weight_loss = F.mse_loss(item["weights"], item["oracle_weights"].detach())
-                stop_loss = F.binary_cross_entropy(item["stop_prob"], item["oracle_stop"].detach())
-                reject_loss = F.binary_cross_entropy(item["reject_prob"], item["oracle_reject"].detach())
+                stop_target = item["oracle_stop"].detach()
+                reject_target = item["oracle_reject"].detach()
+                if "stop_logit" in item and "reject_logit" in item:
+                    stop_loss = F.binary_cross_entropy_with_logits(item["stop_logit"], stop_target)
+                    reject_loss = F.binary_cross_entropy_with_logits(item["reject_logit"], reject_target)
+                else:
+                    stop_prob = item["stop_prob"].clamp(1e-6, 1.0 - 1e-6)
+                    reject_prob = item["reject_prob"].clamp(1e-6, 1.0 - 1e-6)
+                    stop_loss = F.binary_cross_entropy(stop_prob, stop_target)
+                    reject_loss = F.binary_cross_entropy(reject_prob, reject_target)
                 bc_loss = bc_loss + alpha_loss + weight_loss + 0.2 * stop_loss + 0.2 * reject_loss
             loss = loss + (bc_loss / len(aux_history)) * self.lambda_bc
 
@@ -928,4 +938,3 @@ class ECGDenoisingModel(nn.Module):
 @register_model("mecg_e")
 class MECGEDenoiser(ECGDenoisingModel):
     block_cls = TSMambaBlock
-

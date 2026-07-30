@@ -343,6 +343,18 @@ Baseline model 目前尚未決定，因此本文件不固定比較模型清單�
 - 相同 evaluation metrics。
 - 相同 hyperparameter tuning 原則。
 
+Early stopping 與模型選擇原則：
+- 所有模型必須使用相同 early stopping 機制，避免因停止條件不同造成不公平比較。
+- Model selection 僅使用 PTB-XL validation fold 9。
+- External test datasets，包括 MIT-BIH、Chapman、CPSC，不得用於 early stopping、checkpoint selection 或 hyperparameter tuning。
+- 每 100 training iterations 進行一次 validation evaluation。
+- Early stopping patience 設為 50 次 validation evaluations；也就是連續 50 次 validation evaluation 未達成主要改善時停止訓練。
+- 主要模型選擇指標使用 validation PCC，因為 Baseline Wander Removal 需重視 restored ECG 與 clean reference 的波形一致性與 morphology preservation。
+- 主要回報 checkpoint 採用 best validation PCC checkpoint。
+- 同時保存 best validation loss checkpoint 作為輔助分析，但正式主結果以 best validation PCC checkpoint 為準。
+- 若 validation PCC 無改善但 validation loss 改善，可保存 best loss checkpoint，但不應改變主要模型選擇標準。
+- 所有模型的最大訓練步數、validation interval、patience、batch size、optimizer 與 learning rate schedule 應固定一致，除非某模型原論文有不可避免的特殊設定；若有特殊設定必須明確報告。
+
 統計分析建議：
 - 對每個 ECG window 計算指標。
 - 每個 dataset 回報 mean ± standard deviation。
