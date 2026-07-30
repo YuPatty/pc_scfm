@@ -6,10 +6,10 @@
 
 ## 1. 專案結構
 
-請從此目錄執行命令：
+請從此目錄執行命令。若使用專案根目錄下的 `scripts/*.sh`，腳本會自動切到這裡：
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp/src
+cd <PROJECT_ROOT>/src
 ```
 
 主要檔案：
@@ -111,19 +111,14 @@ cpsc.npz      -> 100% 僅測試
 YAML 預設值為：
 
 ```yaml
-data_dir: "/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander"
+data_dir: "../data/ecg_baseline_wander"
+root_dir: "../runs/ecg_baseline_wander"
 ```
 
 資料載入器預期處理後的 NPZ 檔案放在：
 
 ```text
-/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed
-```
-
-Windows 路徑：
-
-```text
-C:\Users\中研院\rl_exp\data\ecg_baseline_wander\processed
+<PROJECT_ROOT>/data/ecg_baseline_wander/processed
 ```
 
 必要檔案：
@@ -366,8 +361,8 @@ PTB-XL fold 10 test set
 python inference.py \
   --config configs/ecg_baseline_wander_mecg_e.yaml \
   --checkpoint /path/to/best_pcc_model.pt \
-  --input /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/test.npz \
-  --output-dir /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/inference/mecg_e_test
+  --input ../data/ecg_baseline_wander/processed/test.npz \
+  --output-dir ../runs/ecg_baseline_wander/inference/mecg_e_test
 ```
 
 可接受的 checkpoint：
@@ -397,7 +392,7 @@ metrics_summary.json
 預設根目錄：
 
 ```text
-/mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander
+<PROJECT_ROOT>/runs/ecg_baseline_wander
 ```
 
 Checkpoint 根目錄：
@@ -498,7 +493,7 @@ python experiment_suite.py exp2-strength \
   --metadata-csv /path/to/ptbxl_database.csv \
   --noise-dir /path/to/nstdb_records \
   --checkpoint /path/to/best_pcc_model.pt \
-  --output-root /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/controlled_tests \
+  --output-root ../runs/ecg_baseline_wander/controlled_tests \
   --alpha-values 0.05,0.1,0.2,0.3,0.5
 ```
 
@@ -518,7 +513,7 @@ python experiment_suite.py exp3-frequency \
   --input-dir /path/to/ptbxl_records \
   --metadata-csv /path/to/ptbxl_database.csv \
   --checkpoint /path/to/best_pcc_model.pt \
-  --output-root /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/controlled_tests \
+  --output-root ../runs/ecg_baseline_wander/controlled_tests \
   --baseline-kind sinusoidal \
   --alpha-value 0.2 \
   --frequencies-hz 0.05,0.1,0.2,0.3,0.5,0.8,1.0
@@ -539,7 +534,7 @@ controlled_tests/exp3_frequency/summary.csv
 ```bash
 python experiment_suite.py exp7-ablation \
   --config configs/ecg_baseline_wander_pc_scfm.yaml \
-  --output-root /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander
+  --output-root ../runs/ecg_baseline_wander
 ```
 
 產生 config 並訓練所有變體：
@@ -547,7 +542,7 @@ python experiment_suite.py exp7-ablation \
 ```bash
 python experiment_suite.py exp7-ablation \
   --config configs/ecg_baseline_wander_pc_scfm.yaml \
-  --output-root /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander \
+  --output-root ../runs/ecg_baseline_wander \
   --run-train
 ```
 
@@ -577,8 +572,8 @@ exp7_ablation/summary.csv
 
 ```bash
 python result_analysis.py aggregate \
-  --results-root /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander \
-  --output /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/paper_tables/aggregate_metrics.csv
+  --results-root ../runs/ecg_baseline_wander \
+  --output ../runs/ecg_baseline_wander/paper_tables/aggregate_metrics.csv
 ```
 
 注意：訓練結束自動評估會輸出 `metrics_*.yaml`；`aggregate` 目前不會直接彙整這些 YAML。若要進入 `aggregate` 流程，請先用 `inference.py` 對指定 checkpoint 產生 `metrics_summary.csv`，或使用 `experiment_suite.py` 產生 sweep summary。
@@ -587,8 +582,8 @@ python result_analysis.py aggregate \
 
 ```bash
 python result_analysis.py select-cases \
-  --inference-dir /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/inference/mecg_e_test \
-  --output-dir /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/case_figures/mecg_e_test \
+  --inference-dir ../runs/ecg_baseline_wander/inference/mecg_e_test \
+  --output-dir ../runs/ecg_baseline_wander/case_figures/mecg_e_test \
   --metric PRD \
   --direction lower
 ```
@@ -599,7 +594,7 @@ python result_analysis.py select-cases \
 python result_analysis.py paired-stats \
   --baseline /path/to/baseline/metrics_per_window.csv \
   --candidate /path/to/candidate/metrics_per_window.csv \
-  --output /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/statistics/mecg_vs_baseline.csv \
+  --output ../runs/ecg_baseline_wander/statistics/mecg_vs_baseline.csv \
   --metrics SSD,MAD,PRD,CosSim,SNR_Improvement_dB,LF_Reduction_dB \
   --correction holm
 ```
@@ -786,8 +781,8 @@ python train_supervised.py --config configs/ecg_baseline_wander_my_model.yaml
 python inference.py \
   --config configs/ecg_baseline_wander_my_model.yaml \
   --checkpoint /path/to/best_pcc_model.pt \
-  --input /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/test.npz \
-  --output-dir /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/inference/my_model_test
+  --input ../data/ecg_baseline_wander/processed/test.npz \
+  --output-dir ../runs/ecg_baseline_wander/inference/my_model_test
 ```
 
 ## 17. 建議完整流程

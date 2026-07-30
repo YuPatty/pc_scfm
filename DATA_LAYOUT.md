@@ -31,16 +31,10 @@ rl_exp/
 
 ## Data Root
 
-Default data root used by the configs:
+Default data root used by the configs when commands are run through `scripts/*.sh`:
 
 ```text
-/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander
-```
-
-Windows path:
-
-```text
-C:\Users\中研院\rl_exp\data\ecg_baseline_wander
+<PROJECT_ROOT>/data/ecg_baseline_wander
 ```
 
 Recommended data layout:
@@ -72,10 +66,10 @@ ecg_baseline_wander/
     exp3_frequency/
 ```
 
-The folders above are already created at:
+The folders above are created under:
 
 ```text
-/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander
+<PROJECT_ROOT>/data/ecg_baseline_wander
 ```
 
 Use `raw/` for downloaded or extracted source datasets. Do not train directly from `raw/`.
@@ -154,7 +148,8 @@ test.npz: fold 10
 All maintained configs use this top-level setting:
 
 ```yaml
-data_dir: "/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander"
+data_dir: "../data/ecg_baseline_wander"
+root_dir: "../runs/ecg_baseline_wander"
 ```
 
 Dataset loading resolves processed files as:
@@ -168,7 +163,7 @@ ${data_dir}/processed/test.npz
 To use a different data location, update `data_dir` in the config, or pass an OmegaConf override:
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp/src
+cd <PROJECT_ROOT>/src
 
 python3 train_supervised.py \
   --config configs/ecg_baseline_wander_pc_scfm.yaml \
@@ -180,7 +175,7 @@ python3 train_supervised.py \
 Default output root:
 
 ```text
-/mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander
+<PROJECT_ROOT>/runs/ecg_baseline_wander
 ```
 
 Generated outputs:
@@ -220,14 +215,14 @@ Generated outputs should not be committed.
 Check whether required data exists:
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp
+cd <PROJECT_ROOT>
 bash scripts/check_project.sh
 ```
 
 Train PC-SCFM:
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp
+cd <PROJECT_ROOT>
 bash scripts/train_model.sh pc_scfm
 ```
 

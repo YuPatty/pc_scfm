@@ -88,11 +88,44 @@ def read_metadata(path):
     with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            key = row.get("filename") or row.get("file") or row.get("path") or row.get("record")
-            if key:
-                rows[Path(key).stem] = row
-                rows[Path(key).name] = row
+            keys = [
+                row.get("filename"),
+                row.get("file"),
+                row.get("path"),
+                row.get("record"),
+                row.get("filename_lr"),
+                row.get("filename_hr"),
+                row.get("ecg_id"),
+            ]
+            for key in keys:
+                if not key:
+                    continue
+                key_path = Path(str(key))
+                rows[str(key)] = row
+                rows[key_path.stem] = row
+                rows[key_path.name] = row
     return rows
+
+
+def metadata_row_for_record(record_path, metadata):
+    candidates = [
+        str(record_path),
+        record_path.as_posix(),
+        record_path.stem,
+        record_path.name,
+        str(record_path.with_suffix("")),
+        record_path.with_suffix("").as_posix(),
+    ]
+
+    parts = record_path.with_suffix("").parts
+    if len(parts) >= 2:
+        candidates.append(Path(*parts[-2:]).as_posix())
+
+    for candidate in candidates:
+        row = metadata.get(candidate)
+        if row:
+            return row
+    return None
 
 
 def discover_records(input_dir):
@@ -283,7 +316,7 @@ def contaminate(clean, cfg, noise_pool, rng, test_kind=None):
 def split_name_for_record(record_path, metadata, dataset_name, split_cfg):
     if dataset_name != "ptbxl":
         return dataset_name
-    row = metadata.get(record_path.stem) or metadata.get(record_path.name)
+    row = metadata_row_for_record(record_path, metadata)
     fold = None
     if row:
         fold_value = row.get("strat_fold") or row.get("fold") or row.get("ptbxl_fold")
@@ -363,7 +396,7 @@ def main():
             continue
 
         fold = None
-        row = metadata.get(record_path.stem) or metadata.get(record_path.name)
+        row = metadata_row_for_record(record_path, metadata)
         if row:
             fold_value = row.get("strat_fold") or row.get("fold") or row.get("ptbxl_fold")
             fold = int(float(fold_value)) if fold_value not in {None, ""} else None

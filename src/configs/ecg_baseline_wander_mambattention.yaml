@@ -1,5 +1,5 @@
-data_dir: "/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander"
-root_dir: "/mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander"
+data_dir: "../data/ecg_baseline_wander"
+root_dir: "../runs/ecg_baseline_wander"
 
 checkpoint_dir: "${root_dir}/checkpoint"
 results_dir: "${root_dir}/results"

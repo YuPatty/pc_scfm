@@ -53,12 +53,12 @@ logs/
 The normal result root is:
 
 ```text
-/mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander
+<PROJECT_ROOT>/runs/ecg_baseline_wander
 ```
 
 ## Recommended Workflow
 
-1. Put processed data under `/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed`.
+1. Put processed data under `<PROJECT_ROOT>/data/ecg_baseline_wander/processed`.
 2. Train `mecg_e`, `mambattention_ecg`, and `pc_scfm` from `src/configs`.
 3. Run common robustness experiments for all major models.
 4. Run ablation experiments only for PC-SCFM.

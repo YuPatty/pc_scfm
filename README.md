@@ -58,10 +58,19 @@ src/configs/ecg_baseline_wander_pc_scfm.yaml
 
 ## 環境安裝
 
+本專案已改成可攜式路徑。YAML 內的 `data_dir` 與 `root_dir` 使用相對路徑，預設從 `src/` 解析到：
+
+```text
+../data/ecg_baseline_wander
+../runs/ecg_baseline_wander
+```
+
+遠端主機只需要保持 repo 結構相同，從專案根目錄使用 `scripts/*.sh` 執行即可，不需要修改成 `/mnt/c/...`。
+
 從專案根目錄執行：
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp
+cd <PROJECT_ROOT>
 pip install -r requirements.txt
 ```
 
@@ -78,29 +87,23 @@ bash scripts/check_project.sh
 預設資料根目錄：
 
 ```text
-/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander
-```
-
-Windows 對應路徑：
-
-```text
-C:\Users\中研院\rl_exp\data\ecg_baseline_wander
+<PROJECT_ROOT>/data/ecg_baseline_wander
 ```
 
 必要檔案：
 
 ```text
-/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/train.npz
-/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/val.npz
-/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/test.npz
+<PROJECT_ROOT>/data/ecg_baseline_wander/processed/train.npz
+<PROJECT_ROOT>/data/ecg_baseline_wander/processed/val.npz
+<PROJECT_ROOT>/data/ecg_baseline_wander/processed/test.npz
 ```
 
 可選外部測試檔：
 
 ```text
-/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/mit_bih.npz
-/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/chapman.npz
-/mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/cpsc.npz
+<PROJECT_ROOT>/data/ecg_baseline_wander/processed/mit_bih.npz
+<PROJECT_ROOT>/data/ecg_baseline_wander/processed/chapman.npz
+<PROJECT_ROOT>/data/ecg_baseline_wander/processed/cpsc.npz
 ```
 
 每個 NPZ 建議包含：
@@ -138,23 +141,32 @@ Shape 建議：
 範例：建立 PTB-XL train/val/test。
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp/src
+cd <PROJECT_ROOT>/src
 
 python3 preprocess_ecg.py \
   --config configs/ecg_baseline_wander_pc_scfm.yaml \
-  --input-dir /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/raw/PTBXL/records100 \
-  --metadata-csv /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/raw/PTBXL/ptbxl_database.csv \
-  --noise-dir /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/raw/NSTDB \
+  --input-dir ../data/ecg_baseline_wander/raw/PTBXL/records100 \
+  --metadata-csv ../data/ecg_baseline_wander/raw/PTBXL/ptbxl_database.csv \
+  --noise-dir ../data/ecg_baseline_wander/raw/NSTDB \
   --dataset-name ptbxl
 ```
+
+如果你目前只先下載完整 PTB-XL `records100` 和 `ptbxl_database.csv`，可以直接從專案根目錄執行：
+
+```bash
+cd <PROJECT_ROOT>
+bash scripts/preprocess_ptbxl_records100.sh
+```
+
+這個腳本會固定使用 `records100`、官方 `ptbxl_database.csv`、Lead II、PTB-XL folds 1-8/9/10，以及 config 內的 clean reference、window、normalization、baseline strength/frequency 設定。如果 `raw/NSTDB` 有資料，會使用 NSTDB baseline；如果還沒有 NSTDB，會先用合成 random low-frequency drift，讓 records100-only 實驗可以先跑。
 
 範例：建立外部測試 NPZ。
 
 ```bash
 python3 preprocess_ecg.py \
   --config configs/ecg_baseline_wander_pc_scfm.yaml \
-  --input-dir /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/raw/MITBIH \
-  --noise-dir /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/raw/NSTDB \
+  --input-dir ../data/ecg_baseline_wander/raw/MITBIH \
+  --noise-dir ../data/ecg_baseline_wander/raw/NSTDB \
   --dataset-name mit_bih
 ```
 
@@ -173,21 +185,21 @@ cpsc
 訓練 PC-SCFM：
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp
+cd <PROJECT_ROOT>
 bash scripts/train_model.sh pc_scfm
 ```
 
 訓練 MECG-E：
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp
+cd <PROJECT_ROOT>
 bash scripts/train_model.sh mecg_e
 ```
 
 訓練 MambAttention：
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp
+cd <PROJECT_ROOT>
 bash scripts/train_model.sh mambattention
 ```
 
@@ -200,7 +212,7 @@ bash scripts/train_model.sh pc_scfm training.train_iterations=1000 training.batc
 直接從 `src/` 執行也可以：
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp/src
+cd <PROJECT_ROOT>/src
 python3 train_supervised.py --config configs/ecg_baseline_wander_pc_scfm.yaml
 ```
 
@@ -209,7 +221,7 @@ python3 train_supervised.py --config configs/ecg_baseline_wander_pc_scfm.yaml
 預設輸出根目錄：
 
 ```text
-/mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander
+<PROJECT_ROOT>/runs/ecg_baseline_wander
 ```
 
 Checkpoint：
@@ -239,13 +251,13 @@ runs/ecg_baseline_wander/log/<exp_name>/<model_name>/log.log
 範例：用訓練好的 PC-SCFM checkpoint 對 `test.npz` 推論。
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp/src
+cd <PROJECT_ROOT>/src
 
 python3 inference.py \
   --config configs/ecg_baseline_wander_pc_scfm.yaml \
-  --checkpoint /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/checkpoint/ptbxl_lead2_baseline_wander_pc_scfm/pc_scfm/best_pcc_model.pt \
-  --input /mnt/c/Users/中研院/rl_exp/data/ecg_baseline_wander/processed/test.npz \
-  --output-dir /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/inference/pc_scfm_test
+  --checkpoint ../runs/ecg_baseline_wander/checkpoint/ptbxl_lead2_baseline_wander_pc_scfm/pc_scfm/best_pcc_model.pt \
+  --input ../data/ecg_baseline_wander/processed/test.npz \
+  --output-dir ../runs/ecg_baseline_wander/inference/pc_scfm_test
 ```
 
 推論結果會寫到 `--output-dir`。
@@ -255,7 +267,7 @@ python3 inference.py \
 消融實驗入口：
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp
+cd <PROJECT_ROOT>
 ```
 
 只產生消融 config，不訓練：
@@ -310,7 +322,7 @@ runs/ecg_baseline_wander/exp7_ablation/summary.csv
 Baseline strength sweep：
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp/src
+cd <PROJECT_ROOT>/src
 
 python3 experiment_suite.py exp2-strength \
   --config configs/ecg_baseline_wander_pc_scfm.yaml \
@@ -318,21 +330,21 @@ python3 experiment_suite.py exp2-strength \
   --metadata-csv /path/to/ptbxl_database.csv \
   --noise-dir /path/to/nstdb_records \
   --checkpoint /path/to/best_pcc_model.pt \
-  --output-root /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/controlled_tests \
+  --output-root ../runs/ecg_baseline_wander/controlled_tests \
   --alpha-values 0.05,0.1,0.2,0.3,0.5
 ```
 
 Baseline frequency sweep：
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp/src
+cd <PROJECT_ROOT>/src
 
 python3 experiment_suite.py exp3-frequency \
   --config configs/ecg_baseline_wander_pc_scfm.yaml \
   --input-dir /path/to/ptbxl_records \
   --metadata-csv /path/to/ptbxl_database.csv \
   --checkpoint /path/to/best_pcc_model.pt \
-  --output-root /mnt/c/Users/中研院/rl_exp/runs/ecg_baseline_wander/controlled_tests \
+  --output-root ../runs/ecg_baseline_wander/controlled_tests \
   --baseline-kind sinusoidal \
   --alpha-value 0.2 \
   --frequencies-hz 0.05,0.1,0.2,0.3,0.5,0.8,1.0
@@ -401,7 +413,7 @@ from .my_new_model import *
 新增 config：
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp/src
+cd <PROJECT_ROOT>/src
 cp configs/ecg_baseline_wander_mecg_e.yaml configs/ecg_baseline_wander_my_new_model.yaml
 ```
 
@@ -418,7 +430,7 @@ model:
 訓練：
 
 ```bash
-cd /mnt/c/Users/中研院/rl_exp/src
+cd <PROJECT_ROOT>/src
 python3 train_supervised.py --config configs/ecg_baseline_wander_my_new_model.yaml
 ```
 
@@ -435,7 +447,7 @@ scripts/train_model.sh
 請 Codex 幫你加新模型時，可以直接這樣下：
 
 ```text
-請在 /mnt/c/Users/中研院/rl_exp/src/models 新增一個模型叫 my_new_model。
+請在 <PROJECT_ROOT>/src/models 新增一個模型叫 my_new_model。
 它要支援 forward(noisy)->[B,1,T] 和 compute_loss(batch, device)。
 請幫我新增 src/models/my_new_model.py、更新 src/models/__init__.py、
 新增 src/configs/ecg_baseline_wander_my_new_model.yaml，
