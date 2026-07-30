@@ -480,6 +480,9 @@ class MECGECore(nn.Module):
             )
         elif self.fea == "pha":
             pha_g = self.phase_decoder(x).permute(0, 3, 2, 1).squeeze(-1)
+            com_g = torch.stack(
+                (mag_g * torch.cos(pha_g), mag_g * torch.sin(pha_g)), dim=-1
+            )
             restored = mag_pha_istft(
                 mag_g, pha_g, self.h.n_fft, self.h.hop_size, self.h.win_size, self.h.compress_factor
             )
