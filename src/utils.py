@@ -176,12 +176,17 @@ def plot_prediction_results(
 def _plot_spectral_diagnostics(noisy, clean, restored, fs, output_path):
     fig, axes = plt.subplots(2, 2, figsize=(13, 8))
 
+    def spectral_window_length(signal):
+        # ECG windows are short (default 512 samples). A 2-second STFT window
+        # leaves too few time bins, so use a shorter window for diagnostics.
+        return min(len(signal), max(64, int(fs * 0.5)))
+
     for signal, label, color in [
         (noisy, "Input", "tab:gray"),
         (clean, "Clean reference", "tab:blue"),
         (restored, "Restored", "tab:red"),
     ]:
-        nperseg = min(len(signal), max(64, int(fs * 2)))
+        nperseg = spectral_window_length(signal)
         freqs, psd = welch(signal, fs=fs, nperseg=nperseg)
         axes[0, 0].semilogy(freqs, psd + 1e-12, label=label, color=color, linewidth=1.2)
 
@@ -202,17 +207,27 @@ def _plot_spectral_diagnostics(noisy, clean, restored, fs, output_path):
         (axes[1, 0], noisy, "Input spectrogram"),
         (axes[1, 1], restored, "Restored spectrogram"),
     ]:
-        nperseg = min(len(signal), max(64, int(fs * 2)))
+        nperseg = spectral_window_length(signal)
         noverlap = min(nperseg - 1, nperseg // 2)
         freqs, times, spec = spectrogram(signal, fs=fs, nperseg=nperseg, noverlap=noverlap)
         mask = freqs <= min(40, fs / 2)
-        mesh = ax.pcolormesh(
-            times,
-            freqs[mask],
-            10 * np.log10(spec[mask] + 1e-12),
-            shading="auto",
-            cmap="magma",
-        )
+        spec_db = 10 * np.log10(spec[mask] + 1e-12)
+        if len(times) < 2:
+            mesh = ax.imshow(
+                spec_db,
+                aspect="auto",
+                origin="lower",
+                extent=[0, len(signal) / fs, freqs[mask][0], freqs[mask][-1]],
+                cmap="magma",
+            )
+        else:
+            mesh = ax.pcolormesh(
+                times,
+                freqs[mask],
+                spec_db,
+                shading="auto",
+                cmap="magma",
+            )
         ax.set_title(title)
         ax.set_xlabel("Second")
         ax.set_ylabel("Hz")

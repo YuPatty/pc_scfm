@@ -195,6 +195,46 @@ Inference_Time_ms：越低代表推論較快。
 Peak_Memory_MB：越低代表記憶體需求較低。
 
 ====================
+重要誤會釐清
+====================
+
+請特別注意：如果我貼的 YAML 結果和 inference/metrics_summary.csv 裡的 RMSE 不完全相同，這不一定是錯誤，也不一定代表 checkpoint 不同。
+
+本專案可能有兩種 RMSE 彙整方式：
+
+1. train_supervised.py 自動測試產生的 metrics_*.yaml：
+RMSE = sqrt(mean((clean - restored)^2))。
+這是把所有 windows 和所有 samples 攤平後計算的 global RMSE。
+
+2. inference.py 產生的 metrics_summary.csv：
+先對每個 window 計算 RMSE，再對所有 windows 的 RMSE 取 mean / std。
+這是 per-window RMSE 的平均。
+
+因為 sqrt() 是非線性運算，所以：
+sqrt(mean(all squared errors)) 不一定等於 mean(window RMSE)。
+
+因此，如果兩者 checkpoint、input dataset、config 都相同，但 RMSE 有小差異，請優先判斷為「統計彙整方式不同」，不要直接判定為模型錯誤。
+
+正式主表建議使用：
+best_pcc/metrics_*.yaml。
+
+paired statistical test 建議使用：
+inference/*/metrics_per_window.csv。
+
+請不要把 metrics_*.yaml 的 RMSE 和 inference/metrics_summary.csv 的 RMSE 當成同一種彙整口徑混在一起比較。
+
+另外，inference/metrics_summary.csv 本身通常不會記錄當初載入的是 best_pcc_model.pt 還是 best_model.pt。
+如果要確認 inference 結果來自哪個 checkpoint，請檢查當初執行 inference.py 的 --checkpoint 參數，或依 output-dir 命名判斷，例如：
+mecg_e_best_pcc_ptbxl_fold10
+mambattention_best_pcc_ptbxl_fold10
+
+如果無法確認 inference checkpoint，請在分析中明確提醒「inference checkpoint provenance 不明，需要確認 --checkpoint 是否為 best_pcc_model.pt」。
+
+aggregate CSV 的注意事項：
+aggregate table 是彙整總表。若 result_analysis.py 已修改為讀取 metrics_*.yaml 和 complexity_summary.yaml，則 PTB-XL、MIT-BIH、Chapman、CPSC 的 YAML 結果會被收錄。
+如果 aggregate table 沒有 external test，請不要立刻認定沒有做 external test，應該先檢查 best_pcc/metrics_mit_bih.yaml、metrics_chapman.yaml、metrics_cpsc.yaml 是否存在。
+
+====================
 請你分析時回答這些問題
 ====================
 
@@ -233,4 +273,3 @@ Peak_Memory_MB：越低代表記憶體需求較低。
 ====================
 以下是我的實驗結果
 ====================
-
