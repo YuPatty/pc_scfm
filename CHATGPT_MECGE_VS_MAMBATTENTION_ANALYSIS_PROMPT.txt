@@ -1,0 +1,236 @@
+請你扮演一位熟悉 ECG signal processing、baseline wander removal、deep learning denoising evaluation 的研究助理。
+
+我要請你完整分析我的實驗結果：MECG-E vs MambAttention ECG，在 Single-lead ECG Baseline Wander Removal 任務上的比較。
+
+請使用繁體中文回答。請不要只逐欄翻譯數字，而是要判斷哪個模型比較好、好在哪裡、是否犧牲 ECG morphology、是否有泛化能力差異，以及哪些結論可以寫進論文。
+
+====================
+實驗任務
+====================
+
+任務：Single-lead ECG Baseline Wander Removal。
+
+模型：
+1. MECG-E
+2. MambAttention ECG
+
+主要比較目標：
+比較 MECG-E 和 MambAttention 誰比較能去除 ECG baseline wander，同時不破壞 ECG morphology。
+
+正式比較請優先使用 best_pcc 結果。
+如果同時有 best_pcc 和 best_loss，請以 best_pcc 作為主結論，best_loss 只作輔助分析。
+
+====================
+資料與路徑意義
+====================
+
+processed/train.npz：
+PTB-XL official folds 1-8。
+用途：training。
+不可用於 final test 結論。
+
+processed/val.npz：
+PTB-XL official fold 9。
+用途：validation、early stopping、checkpoint selection。
+不可用於 final test 結論。
+
+processed/test.npz：
+PTB-XL official fold 10。
+用途：in-domain test。
+這是 PTB-XL 內部測試資料。
+
+processed/mit_bih.npz：
+MIT-BIH external test。
+用途：測試模型跨資料集泛化能力。
+不可用於 training、validation 或 checkpoint selection。
+
+processed/chapman.npz：
+Chapman external test。
+用途：測試模型跨資料集泛化能力。
+不可用於 training、validation 或 checkpoint selection。
+
+processed/cpsc.npz：
+CPSC external test。
+用途：測試模型跨資料集泛化能力。
+不可用於 training、validation 或 checkpoint selection。
+
+====================
+模型結果路徑意義
+====================
+
+runs/ecg_baseline_wander/results/ptbxl_lead2_baseline_wander_mecg_e/mecg_e/best_pcc/
+代表 MECG-E 使用 best validation PCC checkpoint 的正式評估結果。
+這是 MECG-E 主結果。
+
+runs/ecg_baseline_wander/results/ptbxl_lead2_baseline_wander_mecg_e/mecg_e/best_loss/
+代表 MECG-E 使用 best validation loss checkpoint 的輔助評估結果。
+不要拿它和另一個模型的 best_pcc 混用做主結論。
+
+runs/ecg_baseline_wander/results/ptbxl_lead2_baseline_wander_mambattention/mambattention_ecg/best_pcc/
+代表 MambAttention 使用 best validation PCC checkpoint 的正式評估結果。
+這是 MambAttention 主結果。
+
+runs/ecg_baseline_wander/results/ptbxl_lead2_baseline_wander_mambattention/mambattention_ecg/best_loss/
+代表 MambAttention 使用 best validation loss checkpoint 的輔助評估結果。
+不要拿它和另一個模型的 best_pcc 混用做主結論。
+
+metrics_ptbxl_fold10_test.yaml：
+PTB-XL fold 10 in-domain test 的平均指標。
+
+metrics_mit_bih.yaml：
+MIT-BIH external test 的平均指標。
+
+metrics_chapman.yaml：
+Chapman external test 的平均指標。
+
+metrics_cpsc.yaml：
+CPSC external test 的平均指標。
+
+complexity_summary.yaml：
+模型複雜度與推論成本，包括 parameters、FLOPs、inference time、memory。
+
+====================
+Robustness 路徑意義
+====================
+
+runs/ecg_baseline_wander/controlled_tests/mecg_e/exp2_strength/summary.csv：
+MECG-E 的 Experiment 2 baseline strength robustness 結果。
+測試不同 baseline 強度 alpha，例如 0.05、0.1、0.2、0.3、0.5。
+alpha 越大代表 baseline wander 越強。
+
+runs/ecg_baseline_wander/controlled_tests/mambattention/exp2_strength/summary.csv：
+MambAttention 的 Experiment 2 baseline strength robustness 結果。
+用來和 MECG-E 比較 baseline 變強時誰比較穩。
+
+runs/ecg_baseline_wander/controlled_tests/mecg_e/exp3_frequency/summary.csv：
+MECG-E 的 Experiment 3 baseline frequency robustness 結果。
+測試不同 baseline frequency，例如 0.05、0.1、0.2、0.3、0.5、0.8、1.0 Hz。
+
+runs/ecg_baseline_wander/controlled_tests/mambattention/exp3_frequency/summary.csv：
+MambAttention 的 Experiment 3 baseline frequency robustness 結果。
+用來和 MECG-E 比較不同 baseline 頻率下誰比較穩。
+
+====================
+Inference 與統計檢定路徑意義
+====================
+
+runs/ecg_baseline_wander/inference/mecg_e_ptbxl_fold10/metrics_per_window.csv：
+MECG-E 在 PTB-XL fold 10 上每個 ECG window 的逐筆指標。
+用途：paired statistical test。
+
+runs/ecg_baseline_wander/inference/mambattention_ptbxl_fold10/metrics_per_window.csv：
+MambAttention 在 PTB-XL fold 10 上每個 ECG window 的逐筆指標。
+用途：paired statistical test。
+
+runs/ecg_baseline_wander/statistics/mecge_vs_mambattention_ptbxl_fold10.csv：
+MECG-E vs MambAttention 在同一批 PTB-XL fold 10 windows 上的 paired statistical test。
+請分析 p-value、corrected p-value、effect size，以及哪個模型在各指標上較好。
+
+runs/ecg_baseline_wander/paper_tables/mecge_vs_mambattention_aggregate.csv：
+彙整後的總表。
+用途：快速比較各模型、各資料集、各指標。
+
+====================
+PNG 圖檔路徑意義
+====================
+
+prediction_sample_*.png：
+時間域波形圖。
+通常包含 Input、Clean reference vs Restored output、Residual。
+Residual = clean reference - restored output。
+Residual 越接近 0 越好。
+
+spectrum_sample_*.png：
+頻域與時頻診斷圖。
+用來看 restored 是否降低低頻 baseline wander，以及是否破壞 ECG 頻段。
+
+ptbxl_fold10_test_prediction_sample_*.png：
+PTB-XL fold 10 in-domain test 的 sample prediction 圖。
+
+mit_bih_prediction_sample_*.png：
+MIT-BIH external test 的 sample prediction 圖。
+
+chapman_prediction_sample_*.png：
+Chapman external test 的 sample prediction 圖。
+
+cpsc_prediction_sample_*.png：
+CPSC external test 的 sample prediction 圖。
+
+ptbxl_fold10_test_spectrum_sample_*.png：
+PTB-XL fold 10 的 spectrum diagnostic 圖。
+
+mit_bih_spectrum_sample_*.png：
+MIT-BIH 的 spectrum diagnostic 圖。
+
+chapman_spectrum_sample_*.png：
+Chapman 的 spectrum diagnostic 圖。
+
+cpsc_spectrum_sample_*.png：
+CPSC 的 spectrum diagnostic 圖。
+
+====================
+指標方向
+====================
+
+SSD：越低越好。
+MAD：越低越好。
+PRD：越低越好。
+RMSE：越低越好。
+
+CosSim：越高越好。
+Centered_CosSim：越高越好。
+
+Output_SNR_dB：越高越好。
+SNR_Improvement_dB：越高越好。
+LF_Reduction_dB：越高越好。這是判斷 baseline wander removal 能力的核心指標。
+
+R_Peak_Timing_Error_ms：越低越好。
+RR_Interval_MAE_ms：越低越好。
+QRS_Amplitude_Error：越低越好。
+
+Parameters：越低代表模型較小。
+Trainable_Parameters：越低代表可訓練參數較少。
+FLOPs：越低代表計算量較低。
+Inference_Time_ms：越低代表推論較快。
+Peak_Memory_MB：越低代表記憶體需求較低。
+
+====================
+請你分析時回答這些問題
+====================
+
+1. MECG-E 和 MambAttention 哪個 baseline removal 能力較好？
+2. 哪個模型 LF_Reduction_dB 較高？
+3. 哪個模型 SNR_Improvement_dB 較高？
+4. 哪個模型 PRD / RMSE / SSD / MAD 較低？
+5. 哪個模型 CosSim / Centered_CosSim 較高？
+6. 哪個模型比較不破壞 R-peak、RR interval、QRS amplitude？
+7. 在 PTB-XL fold 10 上誰比較好？
+8. 在 MIT-BIH、Chapman、CPSC external test 上誰泛化較好？
+9. Experiment 2 baseline strength 越強時，誰比較穩？
+10. Experiment 3 baseline frequency 不同時，誰比較穩？
+11. paired statistical test 是否顯著？
+12. 如果一個模型去 baseline 較強但 morphology 指標變差，請指出 trade-off。
+
+====================
+請用以下格式回答
+====================
+
+一、整體結論
+二、PTB-XL fold 10 in-domain test 分析
+三、MIT-BIH / Chapman / CPSC external test 分析
+四、Baseline removal 能力比較
+五、ECG morphology 保留能力比較
+六、Experiment 2 baseline strength robustness
+七、Experiment 3 baseline frequency robustness
+八、Paired statistical test 解讀
+九、模型效率與複雜度
+十、PNG 圖像觀察
+十一、可寫進論文的 Results / Discussion 文字
+十二、限制與下一步建議
+
+如果我沒有提供某些檔案，請明確說「目前缺少哪些結果，所以不能下該結論」。
+
+====================
+以下是我的實驗結果
+====================
+

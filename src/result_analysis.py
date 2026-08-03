@@ -3,6 +3,8 @@ import csv
 import math
 from pathlib import Path
 
+import yaml
+
 
 METRIC_DIRECTIONS = {
     "SSD": "lower",
@@ -54,6 +56,16 @@ def parse_args():
 def read_csv_rows(path):
     with open(path, newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
+
+
+def read_yaml_metrics(path):
+    with open(path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    return {
+        key: value
+        for key, value in data.items()
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+    }
 
 
 def write_csv(path, rows, fieldnames):
@@ -112,12 +124,49 @@ def aggregate_results(results_root, output):
                         "mean_std": format_mean_std(mean, std),
                         "direction": METRIC_DIRECTIONS.get(metric, ""),
                         "source": str(summary_path),
-                    }
-                )
+                }
+            )
+
+    for summary_path in sorted(results_root.rglob("metrics_*.yaml")):
+        context = infer_context(summary_path, results_root)
+        context["dataset_or_split"] = summary_path.stem.removeprefix("metrics_")
+        for metric, value in read_yaml_metrics(summary_path).items():
+            mean = parse_float(value)
+            rows.append(
+                {
+                    **context,
+                    "metric": metric,
+                    "mean": mean,
+                    "std": "",
+                    "count": "",
+                    "mean_std": format_mean_std(mean, float("nan")),
+                    "direction": METRIC_DIRECTIONS.get(metric, ""),
+                    "source": str(summary_path),
+                }
+            )
+
+    for summary_path in sorted(results_root.rglob("complexity_summary.yaml")):
+        context = infer_context(summary_path, results_root)
+        context["dataset_or_split"] = "complexity"
+        for metric, value in read_yaml_metrics(summary_path).items():
+            mean = parse_float(value)
+            rows.append(
+                {
+                    **context,
+                    "metric": metric,
+                    "mean": mean,
+                    "std": "",
+                    "count": "",
+                    "mean_std": format_mean_std(mean, float("nan")),
+                    "direction": METRIC_DIRECTIONS.get(metric, ""),
+                    "source": str(summary_path),
+                }
+            )
 
     fieldnames = [
         "experiment",
         "model_or_condition",
+        "checkpoint",
         "dataset_or_split",
         "metric",
         "mean",
@@ -137,6 +186,7 @@ def infer_context(path, root):
     experiment = parts[0] if parts else ""
     model_or_condition = ""
     dataset_or_split = ""
+    checkpoint = ""
 
     if "exp2_strength" in parts or "exp3_frequency" in parts:
         experiment = "Experiment 2" if "exp2_strength" in parts else "Experiment 3"
@@ -148,6 +198,7 @@ def infer_context(path, root):
         idx = parts.index(ckpt)
         experiment = parts[idx - 2] if idx >= 2 else experiment
         model_or_condition = parts[idx - 1] if idx >= 1 else ""
+        checkpoint = ckpt
         dataset_or_split = ckpt
     elif path.name == "summary.csv" and "exp7_ablation" in parts:
         experiment = "Experiment 7"
@@ -155,6 +206,7 @@ def infer_context(path, root):
     return {
         "experiment": experiment,
         "model_or_condition": model_or_condition,
+        "checkpoint": checkpoint,
         "dataset_or_split": dataset_or_split,
     }
 
