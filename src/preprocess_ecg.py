@@ -368,6 +368,22 @@ def main():
     )
     output_dir = Path(args.output_dir or (Path(dataset_cfg["data_dir"]) / "processed"))
     output_dir.mkdir(parents=True, exist_ok=True)
+    file_map = {"train": "train.npz", "val": "val.npz", "test": "test.npz"}
+    file_map.update({"mit_bih": "mit_bih.npz", "chapman": "chapman.npz", "cpsc": "cpsc.npz"})
+
+    output_splits = requested_splits or (
+        {"train", "val", "test"} if args.dataset_name == "ptbxl" else {args.dataset_name}
+    )
+    existing_splits = {
+        split_name
+        for split_name in output_splits
+        if split_name in file_map and (output_dir / file_map[split_name]).exists()
+    }
+    for split_name in sorted(existing_splits):
+        print(f"skipping existing {split_name}: {output_dir / file_map[split_name]}")
+    if existing_splits == output_splits:
+        print("all requested output files already exist; nothing to preprocess.")
+        return
 
     rng = np.random.default_rng(args.seed)
     metadata = read_metadata(args.metadata_csv)
@@ -386,14 +402,17 @@ def main():
         records = records[: args.limit]
 
     for record_path in records:
+        split_name = split_name_for_record(record_path, metadata, args.dataset_name, split_cfg)
+        if requested_splits and split_name not in requested_splits:
+            continue
+        if split_name in existing_splits:
+            continue
+
         ecg, fs, leads = load_record(record_path)
         fs = float(args.source_fs or fs or target_fs)
         lead = select_lead(ecg, lead=dataset_cfg.get("lead", "II"), lead_names=leads)
         clean = filter_ecg(lead, fs, cfg)
         clean = resample_ecg(clean, fs, target_fs)
-        split_name = split_name_for_record(record_path, metadata, args.dataset_name, split_cfg)
-        if requested_splits and split_name not in requested_splits:
-            continue
 
         fold = None
         row = metadata_row_for_record(record_path, metadata)
@@ -409,8 +428,6 @@ def main():
             if fold is not None:
                 folds_by_split.setdefault(split_name, []).append(fold)
 
-    file_map = {"train": "train.npz", "val": "val.npz", "test": "test.npz"}
-    file_map.update({"mit_bih": "mit_bih.npz", "chapman": "chapman.npz", "cpsc": "cpsc.npz"})
     for split_name, clean_windows in clean_by_split.items():
         save_split(
             output_dir / file_map[split_name],

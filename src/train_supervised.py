@@ -481,14 +481,7 @@ def train():
 
         fs = args.dataset.get("resample_hz", args.model.get("sampling_rate", 250))
         low_freq_hz = args.get("evaluation", {}).get("low_frequency_high_hz", 0.5)
-        prediction_paths = plot_prediction_results(
-            model, test_dataset, device, eval_dir,
-            num_samples=3, seed=args.seed, eps=args.dataset.eps, fs=fs,
-        )
-        for prediction_path in prediction_paths:
-            logger.info(f"Saved prediction plot to {prediction_path}")
-
-        eval_loaders = [("ptbxl_fold10_test", test_loader)]
+        eval_items = [("ptbxl_fold10_test", test_dataset, test_loader)]
         for external_name in args.dataset.get("external_test_datasets", []):
             try:
                 external_dataset = get_dataset(data_mode=external_name, **dataset_kwargs)
@@ -501,9 +494,18 @@ def train():
                 shuffle=False,
                 num_workers=4,
             )
-            eval_loaders.append((external_name, external_loader))
+            eval_items.append((external_name, external_dataset, external_loader))
 
-        for eval_name, eval_loader in eval_loaders:
+        for eval_name, eval_dataset, _ in eval_items:
+            prediction_paths = plot_prediction_results(
+                model, eval_dataset, device, eval_dir,
+                num_samples=3, seed=args.seed, eps=args.dataset.eps, fs=fs,
+                filename_prefix=eval_name,
+            )
+            for prediction_path in prediction_paths:
+                logger.info(f"Saved prediction plot to {prediction_path}")
+
+        for eval_name, _, eval_loader in eval_items:
             metrics_dict = get_reconstruction_metrics(
                 model, eval_loader, device, fs=fs, low_freq_hz=low_freq_hz, eps=args.dataset.eps
             )

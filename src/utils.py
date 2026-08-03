@@ -108,7 +108,17 @@ def reconstruction_metrics_from_arrays(noisy, clean, pred, fs=250, low_freq_hz=0
     }
 
 
-def plot_prediction_results(model, dataset, device, results_dir, num_samples=3, seed=42, eps=1e-10, fs=250):
+def plot_prediction_results(
+    model,
+    dataset,
+    device,
+    results_dir,
+    num_samples=3,
+    seed=42,
+    eps=1e-10,
+    fs=250,
+    filename_prefix="",
+):
     results_dir = Path(results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
     if len(dataset) == 0:
@@ -145,12 +155,13 @@ def plot_prediction_results(model, dataset, device, results_dir, num_samples=3, 
             axes[0].set_title(f"Baseline Wander Removal - Sample {sample_idx}")
             fig.tight_layout()
 
-            output_path = results_dir / f"prediction_sample_{plot_idx + 1}.png"
+            prefix = f"{filename_prefix}_" if filename_prefix else ""
+            output_path = results_dir / f"{prefix}prediction_sample_{plot_idx + 1}.png"
             fig.savefig(output_path, dpi=200)
             plt.close(fig)
             output_paths.append(output_path)
 
-            spectral_path = results_dir / f"spectrum_sample_{plot_idx + 1}.png"
+            spectral_path = results_dir / f"{prefix}spectrum_sample_{plot_idx + 1}.png"
             _plot_spectral_diagnostics(
                 noisy_1d,
                 clean_1d,
