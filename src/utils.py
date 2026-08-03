@@ -67,8 +67,13 @@ def plot_loss_curves(train_losses, val_losses, eval_every, results_dir, val_pccs
     def save_curve(values, steps, label, filename, ylabel):
         if not values:
             return
+        values = np.asarray(values, dtype=np.float64)
+        steps = np.asarray(steps)
+        valid = ~np.isnan(values)
+        if not np.any(valid):
+            return
         fig, ax = plt.subplots(figsize=(10, 6))
-        ax.plot(steps, values, label=label, linewidth=2)
+        ax.plot(steps[valid], values[valid], label=label, linewidth=2, marker="o", markersize=3)
         ax.set_xlabel("Training iteration")
         ax.set_ylabel(ylabel)
         ax.set_title(label)
