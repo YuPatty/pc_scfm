@@ -5,7 +5,7 @@ checkpoint_dir: "${root_dir}/checkpoint"
 results_dir: "${root_dir}/results"
 log_dir: "${root_dir}/log"
 
-exp_name: ptbxl_lead2_baseline_wander_mambattention
+exp_name: ptbxl_lead2_baseline_wander_mambattention_post_no_freq_attention
 model_name: mambattention_ecg
 seed: 42
 log_tensorboard: True
@@ -77,9 +77,9 @@ model:
   norm_epsilon: 1.0e-5
   attention_heads: 8
   attention_dropout: 0.0
-  attention_position: "before_mamba"
+  attention_position: "after_mamba"
   use_time_attention: true
-  use_freq_attention: true
+  use_freq_attention: false
   sampling_rate: 250
   n_fft: 64
   hop_size: 8
