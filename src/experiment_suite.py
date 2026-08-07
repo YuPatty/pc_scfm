@@ -263,11 +263,13 @@ def ablation_variants(base_cfg, output_root):
     )
     add(
         "no_flow",
-        "Remove flow matching loss and use a deterministic one-sample flow branch.",
+        "Remove flow matching loss and remove the flow proposal from the policy action space.",
         {
+            "model.use_flow_proposal": False,
             "model.flow_nfe": 1,
             "model.flow_samples": 1,
             "model.loss_fn": "time+com+con+lf+morph+bc+value+risk",
+            "model.lambda_flow": 0.0,
         },
     )
     add(

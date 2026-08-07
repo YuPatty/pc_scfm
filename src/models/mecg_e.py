@@ -353,6 +353,7 @@ class MECGECore(nn.Module):
         self.reject_disagreement_threshold = h.get("reject_disagreement_threshold", 0.25)
         self.stochastic_policy = h.get("stochastic_policy", False)
         self.policy_mode = h.get("policy_mode", "learned")
+        self.use_flow_proposal = h.get("use_flow_proposal", True)
         self.phase_representation = h.get("phase_representation", "raw")
         self.last_metadata = None
 
@@ -382,8 +383,14 @@ class MECGECore(nn.Module):
             raise NotImplementedError(f"Feature '{self.fea}' is not implemented.")
 
         if self.pcscfm_enabled:
-            self.flow_head = FlowBaselineHead(h)
-            self.policy_head = RiskPolicyHead(h, state_dim=h.dense_channel + 15)
+            if not self.use_flow_proposal and "flow" in self.loss_fn:
+                raise ValueError("model.use_flow_proposal=False requires removing 'flow' from model.loss_fn.")
+            self.proposal_count = 3 if self.use_flow_proposal else 2
+            h["proposal_count"] = self.proposal_count
+            if self.use_flow_proposal:
+                self.flow_head = FlowBaselineHead(h)
+            state_dim = h.dense_channel + (15 if self.use_flow_proposal else 12)
+            self.policy_head = RiskPolicyHead(h, state_dim=state_dim)
             self.safety_layer = MorphologySafetyLayer(h)
 
     def _norm_factor(self, noisy):
@@ -538,44 +545,68 @@ class MECGECore(nn.Module):
         validity,
         step_idx,
     ):
-        flow_var = flow_logvar.exp()
         cumulative = original - current
-        proposal_disagreement = torch.stack(
-            [
-                (direct_baseline - flow_mu).abs().mean(dim=-1),
-                (direct_baseline - classical_baseline).abs().mean(dim=-1),
-                (flow_mu - classical_baseline).abs().mean(dim=-1),
-            ],
-            dim=0,
-        ).mean(dim=0)
-        stats = torch.cat(
-            [
-                direct_baseline.abs().mean(dim=-1),
-                flow_mu.abs().mean(dim=-1),
-                flow_var.mean(dim=-1),
-                classical_baseline.abs().mean(dim=-1),
-                self._baseline_projection(current).abs().mean(dim=-1),
-                cumulative.abs().mean(dim=-1),
-                current.std(dim=-1),
-                current.amax(dim=-1) - current.amin(dim=-1),
-                validity["clipping_ratio"],
-                validity["missing_ratio"],
-                proposal_disagreement,
-                (direct_baseline * flow_mu).mean(dim=-1),
-                current.abs().median(dim=-1).values,
-                current.mean(dim=-1),
-                torch.full_like(current.mean(dim=-1), float(step_idx) / max(self.t_max, 1)),
-            ],
-            dim=-1,
-        )
+        if self.use_flow_proposal:
+            flow_var = flow_logvar.exp()
+            proposal_disagreement = torch.stack(
+                [
+                    (direct_baseline - flow_mu).abs().mean(dim=-1),
+                    (direct_baseline - classical_baseline).abs().mean(dim=-1),
+                    (flow_mu - classical_baseline).abs().mean(dim=-1),
+                ],
+                dim=0,
+            ).mean(dim=0)
+            stats = torch.cat(
+                [
+                    direct_baseline.abs().mean(dim=-1),
+                    flow_mu.abs().mean(dim=-1),
+                    flow_var.mean(dim=-1),
+                    classical_baseline.abs().mean(dim=-1),
+                    self._baseline_projection(current).abs().mean(dim=-1),
+                    cumulative.abs().mean(dim=-1),
+                    current.std(dim=-1),
+                    current.amax(dim=-1) - current.amin(dim=-1),
+                    validity["clipping_ratio"],
+                    validity["missing_ratio"],
+                    proposal_disagreement,
+                    (direct_baseline * flow_mu).mean(dim=-1),
+                    current.abs().median(dim=-1).values,
+                    current.mean(dim=-1),
+                    torch.full_like(current.mean(dim=-1), float(step_idx) / max(self.t_max, 1)),
+                ],
+                dim=-1,
+            )
+        else:
+            proposal_disagreement = (direct_baseline - classical_baseline).abs().mean(dim=-1)
+            stats = torch.cat(
+                [
+                    direct_baseline.abs().mean(dim=-1),
+                    classical_baseline.abs().mean(dim=-1),
+                    self._baseline_projection(current).abs().mean(dim=-1),
+                    cumulative.abs().mean(dim=-1),
+                    current.std(dim=-1),
+                    current.amax(dim=-1) - current.amin(dim=-1),
+                    validity["clipping_ratio"],
+                    validity["missing_ratio"],
+                    proposal_disagreement,
+                    current.abs().median(dim=-1).values,
+                    current.mean(dim=-1),
+                    torch.full_like(current.mean(dim=-1), float(step_idx) / max(self.t_max, 1)),
+                ],
+                dim=-1,
+            )
         return torch.cat([pooled_feature, stats], dim=-1)
 
     def _oracle_action(self, current, clean_audio, direct_baseline, flow_mu, classical_baseline):
         residual = current - clean_audio.unsqueeze(1)
-        proposals = torch.cat([direct_baseline, flow_mu, classical_baseline], dim=1)
+        proposals = (
+            torch.cat([direct_baseline, flow_mu, classical_baseline], dim=1)
+            if self.use_flow_proposal
+            else torch.cat([direct_baseline, classical_baseline], dim=1)
+        )
         scores = (proposals * residual).mean(dim=-1)
         best = scores.argmax(dim=1)
-        weights = F.one_hot(best, num_classes=3).float().unsqueeze(-1)
+        weights = F.one_hot(best, num_classes=self.proposal_count).float().unsqueeze(-1)
         chosen = (proposals * weights).sum(dim=1, keepdim=True)
         numerator = (residual * chosen).sum(dim=-1, keepdim=True)
         denominator = (chosen**2).sum(dim=-1, keepdim=True).clamp_min(1e-6)
@@ -604,12 +635,17 @@ class MECGECore(nn.Module):
                 self.h.win_size,
                 self.h.compress_factor,
             )
-            flow_mu, flow_logvar, pooled_feature, flow_mu_coeff = self.flow_head(
-                encoded,
-                current.shape[-1],
-                nfe=self.flow_nfe,
-                samples=self.flow_samples,
-            )
+            pooled_feature = encoded.mean(dim=(2, 3))
+            flow_mu = None
+            flow_logvar = None
+            flow_mu_coeff = None
+            if self.use_flow_proposal:
+                flow_mu, flow_logvar, pooled_feature, flow_mu_coeff = self.flow_head(
+                    encoded,
+                    current.shape[-1],
+                    nfe=self.flow_nfe,
+                    samples=self.flow_samples,
+                )
             classical_baseline = self._classical_baseline(current)
             state = self._belief_state(
                 pooled_feature,
@@ -624,11 +660,13 @@ class MECGECore(nn.Module):
             )
             if self.policy_mode == "fixed_multistep":
                 batch = state.shape[0]
-                weights = torch.zeros((batch, 3, 1), device=state.device, dtype=state.dtype)
+                weights = torch.zeros((batch, self.proposal_count, 1), device=state.device, dtype=state.dtype)
                 weights[:, 0:1] = 1.0
                 action = {
                     "alpha": torch.full((batch, 1, 1), 1.0 / max(self.t_max, 1), device=state.device, dtype=state.dtype),
                     "weights": weights,
+                    "stop_logit": torch.full((batch, 1, 1), -1.0e9, device=state.device, dtype=state.dtype),
+                    "reject_logit": torch.full((batch, 1, 1), -1.0e9, device=state.device, dtype=state.dtype),
                     "stop_prob": torch.zeros((batch, 1, 1), device=state.device, dtype=state.dtype),
                     "reject_prob": torch.zeros((batch, 1, 1), device=state.device, dtype=state.dtype),
                     "value": torch.zeros((batch, 1, 1), device=state.device, dtype=state.dtype),
@@ -645,11 +683,14 @@ class MECGECore(nn.Module):
                     deterministic=(not training or not self.stochastic_policy),
                 )
             weights = action["weights"]
-            mixed_baseline = (
-                weights[:, 0:1] * direct_baseline
-                + weights[:, 1:2] * flow_mu
-                + weights[:, 2:3] * classical_baseline
-            )
+            if self.use_flow_proposal:
+                mixed_baseline = (
+                    weights[:, 0:1] * direct_baseline
+                    + weights[:, 1:2] * flow_mu
+                    + weights[:, 2:3] * classical_baseline
+                )
+            else:
+                mixed_baseline = weights[:, 0:1] * direct_baseline + weights[:, 1:2] * classical_baseline
             delta = self._baseline_projection(mixed_baseline)
             alpha_safe, cumulative_cost, morph_cost = self.safety_layer(action["alpha"], delta, cumulative_cost)
             next_current = current - alpha_safe * delta
@@ -657,9 +698,6 @@ class MECGECore(nn.Module):
             item = {
                 "direct_clean": direct_clean,
                 "direct_baseline": direct_baseline,
-                "flow_mu": flow_mu,
-                "flow_logvar": flow_logvar,
-                "flow_mu_coeff": flow_mu_coeff,
                 "classical_baseline": classical_baseline,
                 "alpha": action["alpha"],
                 "alpha_safe": alpha_safe,
@@ -678,6 +716,14 @@ class MECGECore(nn.Module):
                 "morph_cost": morph_cost,
                 "state": state,
             }
+            if self.use_flow_proposal:
+                item.update(
+                    {
+                        "flow_mu": flow_mu,
+                        "flow_logvar": flow_logvar,
+                        "flow_mu_coeff": flow_mu_coeff,
+                    }
+                )
             if clean_audio is not None:
                 oracle_alpha, oracle_weights, oracle_stop, oracle_reject = self._oracle_action(
                     current,
@@ -692,39 +738,49 @@ class MECGECore(nn.Module):
                         "oracle_weights": oracle_weights,
                         "oracle_stop": oracle_stop,
                         "oracle_reject": oracle_reject,
-                        "flow_target_coeff": self._baseline_coefficients(
-                            self._baseline_projection(current - clean_audio.unsqueeze(1))
-                        ),
-                        "encoded": encoded,
                     }
                 )
+                if self.use_flow_proposal:
+                    item.update(
+                        {
+                            "flow_target_coeff": self._baseline_coefficients(
+                                self._baseline_projection(current - clean_audio.unsqueeze(1))
+                            ),
+                            "encoded": encoded,
+                        }
+                    )
             history.append(item)
 
             current = next_current
             if not training:
                 should_stop = (action["stop_prob"] >= self.stop_threshold).view(-1, 1, 1)
-                flow_uncertainty = flow_logvar.exp().mean(dim=-1, keepdim=True)
-                disagreement = torch.stack(
-                    [
-                        (direct_baseline - flow_mu).abs().mean(dim=-1, keepdim=True),
-                        (direct_baseline - classical_baseline).abs().mean(dim=-1, keepdim=True),
-                        (flow_mu - classical_baseline).abs().mean(dim=-1, keepdim=True),
-                    ],
-                    dim=0,
-                ).mean(dim=0)
+                if self.use_flow_proposal:
+                    flow_uncertainty = flow_logvar.exp().mean(dim=-1, keepdim=True)
+                    disagreement = torch.stack(
+                        [
+                            (direct_baseline - flow_mu).abs().mean(dim=-1, keepdim=True),
+                            (direct_baseline - classical_baseline).abs().mean(dim=-1, keepdim=True),
+                            (flow_mu - classical_baseline).abs().mean(dim=-1, keepdim=True),
+                        ],
+                        dim=0,
+                    ).mean(dim=0)
+                else:
+                    flow_uncertainty = torch.zeros_like(action["reject_prob"])
+                    disagreement = (direct_baseline - classical_baseline).abs().mean(dim=-1, keepdim=True)
                 should_reject = (
                     (action["reject_prob"] >= self.reject_threshold)
-                    | (flow_uncertainty >= self.reject_uncertainty_threshold)
+                    | (self.use_flow_proposal and flow_uncertainty >= self.reject_uncertainty_threshold)
                     | (disagreement >= self.reject_disagreement_threshold)
                     | (validity["clipping_ratio"].unsqueeze(-1) > 0.05)
                     | (validity["missing_ratio"].unsqueeze(-1) > 0.0)
                 )
                 reject_reason = torch.zeros_like(should_reject, dtype=torch.long)
-                reject_reason = torch.where(
-                    flow_uncertainty >= self.reject_uncertainty_threshold,
-                    torch.full_like(reject_reason, 1),
-                    reject_reason,
-                )
+                if self.use_flow_proposal:
+                    reject_reason = torch.where(
+                        flow_uncertainty >= self.reject_uncertainty_threshold,
+                        torch.full_like(reject_reason, 1),
+                        reject_reason,
+                    )
                 reject_reason = torch.where(
                     disagreement >= self.reject_disagreement_threshold,
                     torch.full_like(reject_reason, 2),
@@ -764,7 +820,10 @@ class MECGECore(nn.Module):
         stop_prob = torch.cat([item["stop_prob"].detach().view(-1, 1) for item in history], dim=1)
         reject_prob = torch.cat([item["reject_prob"].detach().view(-1, 1) for item in history], dim=1)
         weights = torch.stack([item["weights"].detach().squeeze(-1) for item in history], dim=1)
-        flow_uncertainty = torch.cat([item["flow_logvar"].detach().exp().mean(dim=-1) for item in history], dim=1)
+        if self.use_flow_proposal:
+            flow_uncertainty = torch.cat([item["flow_logvar"].detach().exp().mean(dim=-1) for item in history], dim=1)
+        else:
+            flow_uncertainty = torch.zeros_like(alpha)
         hard_reject = history[-1].get(
             "hard_reject", reject_prob[:, -1:].unsqueeze(-1) >= self.reject_threshold
         ).detach().view(-1, 1)

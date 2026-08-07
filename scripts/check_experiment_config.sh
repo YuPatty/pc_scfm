@@ -109,6 +109,25 @@ EXPECTED_MAMBATTENTION_VARIANTS = {
     "ecg_baseline_wander_mambattention_post_no_freq_attention.yaml": ("after_mamba", True, False),
 }
 
+EXPECTED_PCSCFM_VARIANTS = {
+    "ecg_baseline_wander_pc_scfm.yaml": {
+        ("model", "phase_representation"): "raw",
+        ("model", "use_flow_proposal"): None,
+        ("model", "flow_nfe"): 4,
+        ("model", "flow_samples"): 4,
+        ("model", "loss_fn"): "time+com+con+lf+morph+flow+bc+value+risk",
+        ("model", "lambda_flow"): 0.01,
+    },
+    "ecg_baseline_wander_pc_scfm_rl_no_flow.yaml": {
+        ("model", "phase_representation"): "raw",
+        ("model", "use_flow_proposal"): False,
+        ("model", "flow_nfe"): 1,
+        ("model", "flow_samples"): 1,
+        ("model", "loss_fn"): "time+com+con+lf+morph+bc+value+risk",
+        ("model", "lambda_flow"): 0.0,
+    },
+}
+
 
 def get_value(data, path):
     value = data
@@ -124,6 +143,14 @@ def check_value(errors, data, path, expected, config_name):
     if actual != expected:
         errors.append(
             f"{config_name}: {'.'.join(path)} expected {expected!r}, got {actual!r}"
+        )
+
+
+def check_optional_value(errors, data, path, expected, config_name):
+    actual = get_value(data, path)
+    if actual not in {None, expected}:
+        errors.append(
+            f"{config_name}: {'.'.join(path)} expected omitted or {expected!r}, got {actual!r}"
         )
 
 
@@ -151,6 +178,21 @@ for path in CONFIGS:
             check_value(errors, data, ("model", "attention_position"), position, name)
             check_value(errors, data, ("model", "use_time_attention"), use_time, name)
             check_value(errors, data, ("model", "use_freq_attention"), use_freq, name)
+
+    if model_name == "pc_scfm":
+        expected_variant = EXPECTED_PCSCFM_VARIANTS.get(name)
+        if expected_variant is None:
+            errors.append(f"{name}: unknown PC-SCFM variant config name.")
+        else:
+            for key_path, expected in expected_variant.items():
+                if key_path == ("model", "use_flow_proposal") and expected is None:
+                    check_optional_value(errors, data, key_path, True, name)
+                else:
+                    check_value(errors, data, key_path, expected, name)
+            loss_terms = set(str(get_value(data, ("model", "loss_fn"))).split("+"))
+            uses_flow = get_value(data, ("model", "use_flow_proposal"))
+            if uses_flow is False and "flow" in loss_terms:
+                errors.append(f"{name}: no-flow PC-SCFM must not include 'flow' in model.loss_fn.")
 
 if errors:
     print("Experiment config check failed:")

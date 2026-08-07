@@ -79,6 +79,7 @@ class RiskPolicyHead(nn.Module):
     def __init__(self, h, state_dim):
         super().__init__()
         hidden = h.get("policy_hidden", 128)
+        self.proposal_count = h.get("proposal_count", 3)
         self.net = nn.Sequential(
             nn.Linear(state_dim, hidden),
             nn.SiLU(),
@@ -87,7 +88,7 @@ class RiskPolicyHead(nn.Module):
         )
         self.alpha = nn.Linear(hidden, 1)
         self.alpha_concentration = nn.Linear(hidden, 2)
-        self.weights = nn.Linear(hidden, 3)
+        self.weights = nn.Linear(hidden, self.proposal_count)
         self.stop = nn.Linear(hidden, 1)
         self.reject = nn.Linear(hidden, 1)
         self.value = nn.Linear(hidden, 1)
@@ -107,7 +108,7 @@ class RiskPolicyHead(nn.Module):
             "alpha": torch.sigmoid(self.alpha(h)).view(-1, 1, 1),
             "alpha_beta": alpha_beta.view(-1, 2),
             "weight_logits": weight_logits,
-            "weights": torch.softmax(weight_logits, dim=-1).view(-1, 3, 1),
+            "weights": torch.softmax(weight_logits, dim=-1).view(-1, self.proposal_count, 1),
             "stop_logit": stop_logits.view(-1, 1, 1),
             "reject_logit": reject_logits.view(-1, 1, 1),
             "stop_prob": torch.sigmoid(stop_logits).view(-1, 1, 1),
@@ -130,7 +131,7 @@ class RiskPolicyHead(nn.Module):
         alpha = beta_dist.rsample().clamp(1e-4, 1.0 - 1e-4).view(-1, 1, 1)
         weight_dist = torch.distributions.Categorical(logits=out["weight_logits"])
         weight_index = weight_dist.sample().view(-1, 1)
-        weights = F.one_hot(weight_index.squeeze(-1), num_classes=3).float().unsqueeze(-1)
+        weights = F.one_hot(weight_index.squeeze(-1), num_classes=self.proposal_count).float().unsqueeze(-1)
         stop_dist = torch.distributions.Bernoulli(logits=out["stop_logit"].view(-1))
         reject_dist = torch.distributions.Bernoulli(logits=out["reject_logit"].view(-1))
         stop_sample = stop_dist.sample().view(-1, 1, 1)
