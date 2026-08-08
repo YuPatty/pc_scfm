@@ -490,7 +490,8 @@ Early stopping 與模型選擇原則：
 
 4. 訓練與測試
 - 程式：code/train_supervised.py。
-- 模型：mecg_e、mambattention_ecg。
+- 模型：mecg_e、mambattention_ecg、mambattention_stfrft_ecg。
+- mambattention_stfrft_ecg 使用與 mambattention_ecg 相同的資料、訓練、評估與 backbone 參數；唯一差異是將 STFT 前處理替換為 learnable STFrFT。
 - 支援 checkpoint、resume、early stopping、loss curves。
 - 訓練結束會評估 PTB-XL fold 10，若 external NPZ 存在也會評估 MIT-BIH、Chapman、CPSC。
 

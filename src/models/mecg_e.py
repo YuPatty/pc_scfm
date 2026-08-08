@@ -1,3 +1,4 @@
+import math
 from functools import partial
 
 import torch
@@ -87,6 +88,91 @@ def mag_pha_istft(mag, pha, n_fft, hop_size, win_size, compress_factor=1.0, cent
         window=hann_window,
         center=center,
     )
+
+
+def _frft_kernel(n_fft, order, device, dtype):
+    if not torch.is_tensor(order) and abs(order) < 1e-6:
+        return torch.eye(n_fft, device=device, dtype=dtype)
+    order = order.to(device=device, dtype=torch.float32) if torch.is_tensor(order) else torch.as_tensor(order, device=device, dtype=torch.float32)
+    alpha = order * (torch.pi / 2.0)
+    sin_alpha = torch.sin(alpha)
+    if torch.abs(sin_alpha) < 1e-4:
+        raise ValueError("frft_order is too close to an even integer; use STFT or a non-singular order.")
+    cot_alpha = torch.cos(alpha) / sin_alpha
+    csc_alpha = 1.0 / sin_alpha
+    n = torch.arange(n_fft, device=device, dtype=torch.float32) - (n_fft - 1) / 2.0
+    u = torch.arange(n_fft, device=device, dtype=torch.float32) - (n_fft - 1) / 2.0
+    phase = torch.pi / n_fft * (
+        (n[:, None].pow(2) + u[None, :].pow(2)) * cot_alpha - 2.0 * n[:, None] * u[None, :] * csc_alpha
+    )
+    kernel = torch.exp(-1j * phase)
+    return kernel.to(dtype=dtype)
+
+
+def _stfrft_frames(y, n_fft, hop_size, win_size, center=True):
+    if center:
+        pad = n_fft // 2
+        y = F.pad(y.unsqueeze(1), (pad, pad), mode="reflect").squeeze(1)
+    frames = y.unfold(-1, win_size, hop_size)
+    hann_window = torch.hann_window(win_size, device=y.device, dtype=y.dtype)
+    frames = frames * hann_window
+    if win_size < n_fft:
+        frames = F.pad(frames, (0, n_fft - win_size))
+    elif win_size > n_fft:
+        frames = frames[..., :n_fft]
+    return frames
+
+
+def mag_pha_stfrft(y, n_fft, hop_size, win_size, compress_factor=1.0, center=True, frft_order=0.9):
+    if not torch.is_tensor(frft_order) and abs(frft_order - 1.0) < 1e-6:
+        return mag_pha_stft(y, n_fft, hop_size, win_size, compress_factor, center)
+    frames = _stfrft_frames(y, n_fft, hop_size, win_size, center=center)
+    kernel = _frft_kernel(n_fft, frft_order, y.device, torch.complex64 if y.dtype == torch.float32 else torch.complex128)
+    spec = torch.einsum("btn,nf->btf", frames.to(kernel.dtype), kernel)
+    spec = spec[..., : n_fft // 2 + 1].permute(0, 2, 1)
+    mag = torch.abs(spec)
+    pha = torch.angle(spec)
+    mag = torch.pow(mag, compress_factor)
+    com = torch.stack((mag * torch.cos(pha), mag * torch.sin(pha)), dim=-1)
+    return mag, pha, com
+
+
+def mag_pha_stfrft_loss(y, n_fft, hop_size, win_size, compress_factor=1.0, center=True, frft_order=0.9):
+    return mag_pha_stfrft(y, n_fft, hop_size, win_size, compress_factor, center, frft_order)
+
+
+def mag_pha_istfrft(mag, pha, n_fft, hop_size, win_size, compress_factor=1.0, center=True, frft_order=0.9):
+    if not torch.is_tensor(frft_order) and abs(frft_order - 1.0) < 1e-6:
+        return mag_pha_istft(mag, pha, n_fft, hop_size, win_size, compress_factor, center)
+    mag = torch.pow(mag, 1.0 / compress_factor)
+    spec_half = torch.complex(mag * torch.cos(pha), mag * torch.sin(pha)).permute(0, 2, 1)
+    spec = spec_half.new_zeros((*spec_half.shape[:2], n_fft))
+    spec[..., : n_fft // 2 + 1] = spec_half
+    kernel = _frft_kernel(n_fft, -frft_order, spec.device, spec.dtype)
+    frames = torch.einsum("btf,fn->btn", spec, kernel) / n_fft
+    frames = frames.real[..., :win_size]
+    hann_window = torch.hann_window(win_size, device=frames.device, dtype=frames.dtype)
+    frames = frames * hann_window
+
+    batch, frame_count, _ = frames.shape
+    output_len = (frame_count - 1) * hop_size + win_size
+    y = frames.new_zeros(batch, output_len)
+    envelope = frames.new_zeros(output_len)
+    for idx in range(frame_count):
+        start = idx * hop_size
+        y[:, start : start + win_size] = y[:, start : start + win_size] + frames[:, idx]
+        envelope[start : start + win_size] = envelope[start : start + win_size] + hann_window.pow(2)
+    y = y / envelope.clamp_min(1e-8)
+    if center:
+        pad = n_fft // 2
+        y = y[:, pad:-pad]
+    return y
+
+
+def _bounded_logit(value, min_value, max_value):
+    ratio = (value - min_value) / (max_value - min_value)
+    ratio = min(max(ratio, 1e-6), 1.0 - 1e-6)
+    return math.log(ratio / (1.0 - ratio))
 
 
 class AttrDict(dict):
@@ -355,6 +441,20 @@ class MECGECore(nn.Module):
         self.policy_mode = h.get("policy_mode", "learned")
         self.use_flow_proposal = h.get("use_flow_proposal", True)
         self.phase_representation = h.get("phase_representation", "raw")
+        self.time_frequency_transform = h.get("time_frequency_transform", "stft")
+        if self.time_frequency_transform not in {"stft", "stfrft"}:
+            raise ValueError("time_frequency_transform must be either 'stft' or 'stfrft'.")
+        self.learnable_frft_order = h.get("learnable_frft_order", self.time_frequency_transform == "stfrft")
+        self.frft_order_min = h.get("frft_order_min", 0.05)
+        self.frft_order_max = h.get("frft_order_max", 1.95)
+        frft_order_init = h.get("frft_order_init", h.get("frft_order", 0.9))
+        if not self.frft_order_min < frft_order_init < self.frft_order_max:
+            raise ValueError("frft_order_init must be between frft_order_min and frft_order_max.")
+        if self.time_frequency_transform == "stfrft" and self.learnable_frft_order:
+            raw_init = _bounded_logit(frft_order_init, self.frft_order_min, self.frft_order_max)
+            self.frft_order_raw = nn.Parameter(torch.tensor(raw_init, dtype=torch.float32))
+        else:
+            self.register_buffer("frft_order_fixed", torch.tensor(float(frft_order_init), dtype=torch.float32))
         self.last_metadata = None
 
         in_channel = 3 if self.phase_representation == "sincos" and self.fea == "pha" else 2
@@ -393,6 +493,70 @@ class MECGECore(nn.Module):
             self.policy_head = RiskPolicyHead(h, state_dim=state_dim)
             self.safety_layer = MorphologySafetyLayer(h)
 
+    def _current_frft_order(self):
+        if self.time_frequency_transform != "stfrft":
+            return None
+        if self.learnable_frft_order:
+            span = self.frft_order_max - self.frft_order_min
+            return self.frft_order_min + span * torch.sigmoid(self.frft_order_raw)
+        return self.frft_order_fixed
+
+    def _mag_pha_transform(self, audio):
+        if self.time_frequency_transform == "stfrft":
+            return mag_pha_stfrft(
+                audio,
+                self.h.n_fft,
+                self.h.hop_size,
+                self.h.win_size,
+                self.h.compress_factor,
+                frft_order=self._current_frft_order(),
+            )
+        return mag_pha_stft(
+            audio,
+            self.h.n_fft,
+            self.h.hop_size,
+            self.h.win_size,
+            self.h.compress_factor,
+        )
+
+    def _mag_pha_transform_loss(self, audio):
+        if self.time_frequency_transform == "stfrft":
+            return mag_pha_stfrft_loss(
+                audio,
+                self.h.n_fft,
+                self.h.hop_size,
+                self.h.win_size,
+                self.h.compress_factor,
+                frft_order=self._current_frft_order(),
+            )
+        return mag_pha_stft_loss(
+            audio,
+            self.h.n_fft,
+            self.h.hop_size,
+            self.h.win_size,
+            self.h.compress_factor,
+        )
+
+    def _mag_pha_inverse(self, mag, pha):
+        if self.time_frequency_transform == "stfrft":
+            return mag_pha_istfrft(
+                mag,
+                pha,
+                self.h.n_fft,
+                self.h.hop_size,
+                self.h.win_size,
+                self.h.compress_factor,
+                frft_order=self._current_frft_order(),
+            )
+        return mag_pha_istft(
+            mag,
+            pha,
+            self.h.n_fft,
+            self.h.hop_size,
+            self.h.win_size,
+            self.h.compress_factor,
+        )
+
     def _norm_factor(self, noisy):
         if self.norm == "1":
             return torch.sqrt(noisy.shape[-1] / torch.sum(noisy**2.0, -1, keepdim=True))
@@ -401,13 +565,7 @@ class MECGECore(nn.Module):
         return torch.ones((noisy.shape[0], 1, 1), device=noisy.device)
 
     def _encode_noisy(self, noisy_audio):
-        noisy_mag, noisy_pha, noisy_com = mag_pha_stft(
-            noisy_audio,
-            self.h.n_fft,
-            self.h.hop_size,
-            self.h.win_size,
-            self.h.compress_factor,
-        )
+        noisy_mag, noisy_pha, noisy_com = self._mag_pha_transform(noisy_audio)
         noisy_mag_4d = noisy_mag.unsqueeze(-1).permute(0, 3, 2, 1)
 
         if self.fea == "cpx":
@@ -482,24 +640,18 @@ class MECGECore(nn.Module):
                 (mag_g * torch.cos(noisy_pha), mag_g * torch.sin(noisy_pha)), dim=-1
             )
             pha_g = torch.angle(torch.complex((com_g + com_d)[..., 0], (com_g + com_d)[..., 1]))
-            restored = mag_pha_istft(
-                mag_g, pha_g, self.h.n_fft, self.h.hop_size, self.h.win_size, self.h.compress_factor
-            )
+            restored = self._mag_pha_inverse(mag_g, pha_g)
         elif self.fea == "pha":
             pha_g = self.phase_decoder(x).permute(0, 3, 2, 1).squeeze(-1)
             com_g = torch.stack(
                 (mag_g * torch.cos(pha_g), mag_g * torch.sin(pha_g)), dim=-1
             )
-            restored = mag_pha_istft(
-                mag_g, pha_g, self.h.n_fft, self.h.hop_size, self.h.win_size, self.h.compress_factor
-            )
+            restored = self._mag_pha_inverse(mag_g, pha_g)
         else:
             b, channels, frames = self.encoder(noisy_audio.unsqueeze(1)).shape
             com_d = self.complex_decoder(x).permute(0, 1, 3, 2).reshape(b, channels, frames)
             restored = self.decoder(com_d).squeeze(1)
-            _, _, com_g = mag_pha_stft_loss(
-                restored, self.h.n_fft, self.h.hop_size, self.h.win_size, self.h.compress_factor
-            )
+            _, _, com_g = self._mag_pha_transform_loss(restored)
         output = restored.unsqueeze(1)
         if return_com:
             return output, com_g
@@ -628,13 +780,7 @@ class MECGECore(nn.Module):
             direct_clean = self.restore_one_shot(current)
             direct_baseline = current - direct_clean
             encoded, _, _ = self._encode_noisy(current.squeeze(1))
-            _, _, last_com = mag_pha_stft_loss(
-                direct_clean.squeeze(1),
-                self.h.n_fft,
-                self.h.hop_size,
-                self.h.win_size,
-                self.h.compress_factor,
-            )
+            _, _, last_com = self._mag_pha_transform_loss(direct_clean.squeeze(1))
             pooled_feature = encoded.mean(dim=(2, 3))
             flow_mu = None
             flow_logvar = None
@@ -859,12 +1005,8 @@ class MECGECore(nn.Module):
         return (value * mask).sum() / mask.sum().clamp_min(1.0)
 
     def _ecg_loss(self, clean_audio, restored_audio, norm_factor, predicted_com=None, aux_history=None, valid_mask=None):
-        _, _, clean_com = mag_pha_stft(
-            clean_audio, self.h.n_fft, self.h.hop_size, self.h.win_size, self.h.compress_factor
-        )
-        _, _, restored_com = mag_pha_stft_loss(
-            restored_audio, self.h.n_fft, self.h.hop_size, self.h.win_size, self.h.compress_factor
-        )
+        _, _, clean_com = self._mag_pha_transform(clean_audio)
+        _, _, restored_com = self._mag_pha_transform_loss(restored_audio)
         com_g = predicted_com if predicted_com is not None else restored_com
         loss = clean_audio.new_tensor(0.0)
 

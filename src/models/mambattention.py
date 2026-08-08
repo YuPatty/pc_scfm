@@ -56,3 +56,8 @@ class MambAttentionBlock(TSMambaBlock):
 @register_model("mambattention_ecg")
 class MambAttentionECGDenoiser(ECGDenoisingModel):
     block_cls = MambAttentionBlock
+
+
+@register_model("mambattention_stfrft_ecg")
+class MambAttentionSTFrFTECGDenoiser(MambAttentionECGDenoiser):
+    pass

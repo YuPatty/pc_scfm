@@ -89,6 +89,17 @@ EXPECTED_BY_MODEL = {
         ("model", "attention_dropout"): 0.0,
         ("model", "loss_fn"): "time+com+con",
     },
+    "mambattention_stfrft_ecg": {
+        ("model", "dense_channel"): 64,
+        ("model", "attention_heads"): 8,
+        ("model", "attention_dropout"): 0.0,
+        ("model", "loss_fn"): "time+com+con",
+        ("model", "time_frequency_transform"): "stfrft",
+        ("model", "learnable_frft_order"): True,
+        ("model", "frft_order_init"): 0.9,
+        ("model", "frft_order_min"): 0.05,
+        ("model", "frft_order_max"): 1.95,
+    },
     "pc_scfm": {
         ("model", "dense_channel"): 64,
         ("model", "attention_heads"): 8,
@@ -107,6 +118,7 @@ EXPECTED_MAMBATTENTION_VARIANTS = {
     "ecg_baseline_wander_mambattention_post_attention.yaml": ("after_mamba", True, True),
     "ecg_baseline_wander_mambattention_post_no_time_attention.yaml": ("after_mamba", False, True),
     "ecg_baseline_wander_mambattention_post_no_freq_attention.yaml": ("after_mamba", True, False),
+    "ecg_baseline_wander_mambattention_stfrft.yaml": ("before_mamba", True, True),
 }
 
 EXPECTED_PCSCFM_VARIANTS = {
@@ -169,7 +181,7 @@ for path in CONFIGS:
     for key_path, expected in EXPECTED_BY_MODEL.get(model_name, {}).items():
         check_value(errors, data, key_path, expected, name)
 
-    if model_name == "mambattention_ecg":
+    if model_name in {"mambattention_ecg", "mambattention_stfrft_ecg"}:
         expected_variant = EXPECTED_MAMBATTENTION_VARIANTS.get(name)
         if expected_variant is None:
             errors.append(f"{name}: unknown MambAttention variant config name.")
