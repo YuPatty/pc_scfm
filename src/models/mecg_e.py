@@ -448,12 +448,12 @@ class MECGECore(nn.Module):
         self.frft_order_min = h.get("frft_order_min", 0.05)
         self.frft_order_max = h.get("frft_order_max", 1.95)
         frft_order_init = h.get("frft_order_init", h.get("frft_order", 0.9))
-        if not self.frft_order_min < frft_order_init < self.frft_order_max:
+        if self.time_frequency_transform == "stfrft" and not self.frft_order_min < frft_order_init < self.frft_order_max:
             raise ValueError("frft_order_init must be between frft_order_min and frft_order_max.")
         if self.time_frequency_transform == "stfrft" and self.learnable_frft_order:
             raw_init = _bounded_logit(frft_order_init, self.frft_order_min, self.frft_order_max)
             self.frft_order_raw = nn.Parameter(torch.tensor(raw_init, dtype=torch.float32))
-        else:
+        elif self.time_frequency_transform == "stfrft":
             self.register_buffer("frft_order_fixed", torch.tensor(float(frft_order_init), dtype=torch.float32))
         self.last_metadata = None
 
