@@ -29,6 +29,8 @@ models/
   mambattention.py
   pc_scfm.py
   pc_scfm_components.py
+  eddm.py
+  classical_filters.py
   factory.py
 
 preprocess_ecg.py      # 從 ECG records 建立 NPZ 檔案
@@ -47,6 +49,9 @@ analysis.py
 mecg_e
 mambattention_ecg
 pc_scfm
+eddm
+fir_filter
+iir_filter
 ```
 
 ## 2. 環境

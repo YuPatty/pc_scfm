@@ -110,6 +110,10 @@ source "$ROOT_DIR/scripts/experiment_models.sh"
 checkpoint_for() {
   local exp_name="$1"
   local model_dir="$2"
+  if [[ "$model_dir" == "fir_filter" || "$model_dir" == "iir_filter" ]]; then
+    printf '%s\n' "__classical_filter_no_checkpoint__"
+    return 0
+  fi
   printf '%s\n' "$RUN_ROOT/checkpoint/$exp_name/$model_dir/best_pcc_model.pt"
 }
 
@@ -152,7 +156,7 @@ run_exp2_if_available() {
   local output_root="$RUN_ROOT/controlled_tests/$model_key"
   local summary="$output_root/exp2_strength/summary.csv"
 
-  if [[ ! -f "$checkpoint" ]]; then
+  if [[ "$checkpoint" != "__classical_filter_no_checkpoint__" && ! -f "$checkpoint" ]]; then
     echo "SKIP exp2: $model_key: missing checkpoint $checkpoint"
     return 0
   fi
@@ -187,7 +191,7 @@ run_exp3_if_available() {
   local output_root="$RUN_ROOT/controlled_tests/$model_key"
   local summary="$output_root/exp3_frequency/summary.csv"
 
-  if [[ ! -f "$checkpoint" ]]; then
+  if [[ "$checkpoint" != "__classical_filter_no_checkpoint__" && ! -f "$checkpoint" ]]; then
     echo "SKIP exp3: $model_key: missing checkpoint $checkpoint"
     return 0
   fi

@@ -16,9 +16,15 @@ pc_scfm
 
 eddm
   Dual-path diffusion ECG denoiser with ECG-noise and Gaussian-noise paths
+
+fir_filter
+  Classical FIR high-pass ECG filter baseline, based on Kaiser-window design
+
+iir_filter
+  Classical IIR high-pass ECG filter baseline, based on Butterworth design
 ```
 
-PC-SCFM 消融實驗只針對 `pc_scfm`。一般訓練、推論、robustness sweep 則三個模型都可以跑。
+PC-SCFM 消融實驗只針對 `pc_scfm`。一般訓練、推論、robustness sweep 則所有主模型與 classical filter baselines 都可以跑。
 
 ## 專案結構
 
@@ -49,6 +55,7 @@ src/models/mambattention.py
 src/models/pc_scfm.py
 src/models/pc_scfm_components.py
 src/models/eddm.py
+src/models/classical_filters.py
 src/models/factory.py
 ```
 
@@ -59,6 +66,8 @@ src/configs/ecg_baseline_wander_mecg_e.yaml
 src/configs/ecg_baseline_wander_mambattention.yaml
 src/configs/ecg_baseline_wander_pc_scfm.yaml
 src/configs/ecg_baseline_wander_eddm.yaml
+src/configs/ecg_baseline_wander_fir_filter.yaml
+src/configs/ecg_baseline_wander_iir_filter.yaml
 ```
 
 ## 環境安裝
@@ -206,6 +215,14 @@ bash scripts/train_model.sh mecg_e
 ```bash
 cd <PROJECT_ROOT>
 bash scripts/train_model.sh mambattention
+```
+
+執行 FIR / IIR 傳統濾波 baseline：
+
+```bash
+cd <PROJECT_ROOT>
+bash scripts/train_model.sh fir_filter
+bash scripts/train_model.sh iir_filter
 ```
 
 覆蓋 config 參數：

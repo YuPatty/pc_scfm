@@ -91,6 +91,8 @@ def run_inference(model, noisy, device, batch_size):
 
 
 def load_model_checkpoint(model, checkpoint_path, device):
+    if str(checkpoint_path).lower() in {"none", "null", "__classical_filter_no_checkpoint__"}:
+        return
     checkpoint = torch.load(checkpoint_path, map_location=device)
     if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
         model.load_state_dict(checkpoint["model_state_dict"])

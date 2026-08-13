@@ -124,6 +124,23 @@ EXPECTED_BY_MODEL = {
         ("model", "pcc_weight"): 0.1,
         ("model", "pool_scales"): [2, 4, 8],
     },
+    "fir_filter": {
+        ("model", "dense_channel"): 64,
+        ("model", "filter_kind"): "fir",
+        ("model", "cutoff_hz"): 0.5,
+        ("model", "fir_order"): 56,
+        ("model", "fir_window"): "kaiser",
+        ("model", "kaiser_beta"): 8.6,
+        ("model", "zero_phase"): True,
+    },
+    "iir_filter": {
+        ("model", "dense_channel"): 64,
+        ("model", "filter_kind"): "iir",
+        ("model", "cutoff_hz"): 0.5,
+        ("model", "iir_order"): 1,
+        ("model", "iir_method"): "butterworth",
+        ("model", "zero_phase"): True,
+    },
 }
 
 EXPECTED_MAMBATTENTION_VARIANTS = {
@@ -134,6 +151,9 @@ EXPECTED_MAMBATTENTION_VARIANTS = {
     "ecg_baseline_wander_mambattention_post_no_time_attention.yaml": ("after_mamba", False, True),
     "ecg_baseline_wander_mambattention_post_no_freq_attention.yaml": ("after_mamba", True, False),
     "ecg_baseline_wander_mambattention_stfrft.yaml": ("before_mamba", True, True),
+    "ecg_baseline_wander_mambattention_stfrft_no_time_attention.yaml": ("before_mamba", False, True),
+    "ecg_baseline_wander_mambattention_stfrft_no_freq_attention.yaml": ("before_mamba", True, False),
+    "ecg_baseline_wander_mambattention_stfrft_no_attention.yaml": ("before_mamba", False, False),
 }
 
 EXPECTED_PCSCFM_VARIANTS = {

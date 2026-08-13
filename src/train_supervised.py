@@ -204,6 +204,7 @@ def train():
     best_model_ckpt = checkpoint_dir / 'best_model.pt'
     best_pcc_model_ckpt = checkpoint_dir / 'best_pcc_model.pt'
     training_state_ckpt = checkpoint_dir / 'training_state.pt'
+    skip_training = not bool(getattr(model, "requires_training", True))
 
     patience = args.training.get('early_stopping_patience', 20)
     min_delta = float(args.training.get('early_stopping_min_delta', 0.0))
@@ -218,7 +219,24 @@ def train():
     running_train_loss = 0
     running_train_steps = 0
 
-    if resume:
+    if skip_training:
+        logger.info("Model is a fixed baseline; skipping optimization and evaluating directly.")
+        torch.save(model.state_dict(), best_pcc_model_ckpt)
+        torch.save(model.state_dict(), best_model_ckpt)
+        torch.save(model.state_dict(), checkpoint_dir / 'model_last.pt')
+        _save_training_state(
+            training_state_ckpt,
+            model,
+            optimizer,
+            scheduler,
+            0,
+            best_val_loss,
+            best_val_pcc,
+            train_losses,
+            val_losses,
+            val_pccs,
+        )
+    elif resume:
         if not resume_checkpoint.exists():
             raise FileNotFoundError(
                 f"training.resume=True but resume checkpoint was not found: {resume_checkpoint}"
@@ -243,11 +261,11 @@ def train():
         desc=f"Training {model_name}",
         unit="iter",
         dynamic_ncols=True,
-        disable=not args.training.get("progress_bar", True),
+        disable=skip_training or not args.training.get("progress_bar", True),
     )
 
     try:
-        while step < args.training.train_iterations and not stop_training:
+        while not skip_training and step < args.training.train_iterations and not stop_training:
             # logger.info(f'Training iteration {step+1}')
             model.train()
 

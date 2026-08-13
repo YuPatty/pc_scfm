@@ -13,8 +13,11 @@ cd "$APP_DIR"
 for item in "${EXPERIMENT_MODELS[@]}"; do
   IFS="|" read -r name config exp_name model_dir <<< "$item"
   checkpoint="$ROOT_DIR/runs/ecg_baseline_wander/checkpoint/$exp_name/$model_dir/best_pcc_model.pt"
+  if [[ "$model_dir" == "fir_filter" || "$model_dir" == "iir_filter" ]]; then
+    checkpoint="__classical_filter_no_checkpoint__"
+  fi
 
-  if [[ ! -f "$checkpoint" ]]; then
+  if [[ "$checkpoint" != "__classical_filter_no_checkpoint__" && ! -f "$checkpoint" ]]; then
     echo "MISSING checkpoint: $checkpoint" >&2
     exit 1
   fi

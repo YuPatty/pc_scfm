@@ -23,9 +23,15 @@ case "$MODEL" in
   eddm)
     CONFIG="configs/ecg_baseline_wander_eddm.yaml"
     ;;
+  fir_filter|fir)
+    CONFIG="configs/ecg_baseline_wander_fir_filter.yaml"
+    ;;
+  iir_filter|iir)
+    CONFIG="configs/ecg_baseline_wander_iir_filter.yaml"
+    ;;
   *)
     echo "Unknown model: $MODEL" >&2
-    echo "Expected one of: pc_scfm, mecg_e, mambattention, mambattention_stfrft, eddm" >&2
+    echo "Expected one of: pc_scfm, mecg_e, mambattention, mambattention_stfrft, eddm, fir_filter, iir_filter" >&2
     exit 2
     ;;
 esac
