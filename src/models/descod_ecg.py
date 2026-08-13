@@ -94,26 +94,31 @@ class ConditionalScoreModel(nn.Module):
     def __init__(self, feats=80, dilations=(1, 2, 4, 2, 1)):
         super().__init__()
         feats = int(feats)
-        self.stream_x = nn.ModuleList(
-            [nn.Sequential(_KaimingConv1d(1, feats, 9, padding=4, padding_mode="reflect"), nn.LeakyReLU(0.2))]
-            + [HNFBlock(feats, dilation) for dilation in dilations]
+        self.stream_x_stem = nn.Sequential(
+            _KaimingConv1d(1, feats, 9, padding=4, padding_mode="reflect"),
+            nn.LeakyReLU(0.2),
         )
-        self.stream_cond = nn.ModuleList(
-            [nn.Sequential(_KaimingConv1d(1, feats, 9, padding=4, padding_mode="reflect"), nn.LeakyReLU(0.2))]
-            + [HNFBlock(feats, dilation) for dilation in dilations]
+        self.stream_cond_stem = nn.Sequential(
+            _KaimingConv1d(1, feats, 9, padding=4, padding_mode="reflect"),
+            nn.LeakyReLU(0.2),
         )
+        self.stream_x_blocks = nn.ModuleList([HNFBlock(feats, dilation) for dilation in dilations])
+        self.stream_cond_blocks = nn.ModuleList([HNFBlock(feats, dilation) for dilation in dilations])
         self.embed = NoiseLevelEmbedding(feats)
         self.bridge = nn.ModuleList([Bridge(feats) for _ in dilations])
         self.conv_out = _KaimingConv1d(feats, 1, 9, padding=4, padding_mode="reflect")
 
     def forward(self, x, condition, noise_scale):
         noise_embed = self.embed(noise_scale)
-        skips = []
-        for layer, bridge in zip(self.stream_x, self.bridge):
-            x = layer(x)
-            skips.append(bridge(x, noise_embed))
-        for skip, layer in zip(skips, self.stream_cond):
-            condition = layer(condition) + skip
+        x = self.stream_x_stem(x)
+        condition = self.stream_cond_stem(condition)
+        for x_layer, condition_layer, bridge in zip(
+            self.stream_x_blocks,
+            self.stream_cond_blocks,
+            self.bridge,
+        ):
+            x = x_layer(x)
+            condition = condition_layer(condition) + bridge(x, noise_embed)
         return self.conv_out(condition)
 
 
