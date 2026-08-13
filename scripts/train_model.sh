@@ -29,6 +29,15 @@ case "$MODEL" in
   deepfilter|deep_filter)
     CONFIG="configs/ecg_baseline_wander_deepfilter.yaml"
     ;;
+  descod_ecg_1shot|descod_1shot|descod1)
+    CONFIG="configs/ecg_baseline_wander_descod_ecg_1shot.yaml"
+    ;;
+  descod_ecg_5shot|descod_5shot|descod5)
+    CONFIG="configs/ecg_baseline_wander_descod_ecg_5shot.yaml"
+    ;;
+  descod_ecg_10shot|descod_10shot|descod10)
+    CONFIG="configs/ecg_baseline_wander_descod_ecg_10shot.yaml"
+    ;;
   drnn|drrn)
     CONFIG="configs/ecg_baseline_wander_drnn.yaml"
     ;;
@@ -40,7 +49,7 @@ case "$MODEL" in
     ;;
   *)
     echo "Unknown model: $MODEL" >&2
-    echo "Expected one of: pc_scfm, mecg_e, mambattention, mambattention_stfrft, eddm, fcn_dae, deepfilter, drnn, fir_filter, iir_filter" >&2
+    echo "Expected one of: pc_scfm, mecg_e, mambattention, mambattention_stfrft, eddm, fcn_dae, deepfilter, descod_ecg_1shot, descod_ecg_5shot, descod_ecg_10shot, drnn, fir_filter, iir_filter" >&2
     exit 2
     ;;
 esac

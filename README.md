@@ -26,6 +26,9 @@ fcn_dae
 deepfilter
   Multibranch LANL dilated convolution baseline from Romero et al. 2021
 
+descod_ecg_1shot / descod_ecg_5shot / descod_ecg_10shot
+  DeScoD-ECG conditional score-based diffusion baselines with 1/5/10-shot reconstruction
+
 fir_filter
   Classical FIR high-pass ECG filter baseline, based on Kaiser-window design
 
@@ -67,6 +70,7 @@ src/models/eddm.py
 src/models/drnn.py
 src/models/fcn_dae.py
 src/models/deepfilter.py
+src/models/descod_ecg.py
 src/models/classical_filters.py
 src/models/factory.py
 ```
@@ -81,6 +85,9 @@ src/configs/ecg_baseline_wander_eddm.yaml
 src/configs/ecg_baseline_wander_drnn.yaml
 src/configs/ecg_baseline_wander_fcn_dae.yaml
 src/configs/ecg_baseline_wander_deepfilter.yaml
+src/configs/ecg_baseline_wander_descod_ecg_1shot.yaml
+src/configs/ecg_baseline_wander_descod_ecg_5shot.yaml
+src/configs/ecg_baseline_wander_descod_ecg_10shot.yaml
 src/configs/ecg_baseline_wander_fir_filter.yaml
 src/configs/ecg_baseline_wander_iir_filter.yaml
 ```
@@ -251,6 +258,15 @@ bash scripts/train_model.sh fcn_dae
 ```bash
 cd <PROJECT_ROOT>
 bash scripts/train_model.sh deepfilter
+```
+
+訓練 DeScoD-ECG 1/5/10-shot：
+
+```bash
+cd <PROJECT_ROOT>
+bash scripts/train_model.sh descod_ecg_1shot
+bash scripts/train_model.sh descod_ecg_5shot
+bash scripts/train_model.sh descod_ecg_10shot
 ```
 
 執行 FIR / IIR 傳統濾波 baseline：

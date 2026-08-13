@@ -7,3 +7,4 @@ from .classical_filters import *
 from .drnn import *
 from .fcn_dae import *
 from .deepfilter import *
+from .descod_ecg import *

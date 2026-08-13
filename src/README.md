@@ -33,6 +33,7 @@ models/
   drnn.py
   fcn_dae.py
   deepfilter.py
+  descod_ecg.py
   classical_filters.py
   factory.py
 
@@ -56,6 +57,9 @@ eddm
 drnn
 fcn_dae
 deepfilter
+descod_ecg_1shot
+descod_ecg_5shot
+descod_ecg_10shot
 fir_filter
 iir_filter
 ```

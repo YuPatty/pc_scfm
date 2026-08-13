@@ -26,6 +26,12 @@ python3 -X pycache_prefix=/tmp/rl_exp_pycache -m py_compile \
   src/models/mambattention.py \
   src/models/pc_scfm.py \
   src/models/pc_scfm_components.py \
+  src/models/eddm.py \
+  src/models/drnn.py \
+  src/models/fcn_dae.py \
+  src/models/deepfilter.py \
+  src/models/descod_ecg.py \
+  src/models/classical_filters.py \
   src/experiment_suite.py \
   src/train_supervised.py \
   src/inference.py
