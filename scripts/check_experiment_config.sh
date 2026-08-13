@@ -161,6 +161,18 @@ EXPECTED_BY_MODEL = {
         ("model", "decoder_strides"): [1, 2, 2, 2, 2, 2, 1],
         ("model", "loss_fn"): "mse",
     },
+    "deepfilter": {
+        ("model", "dense_channel"): 64,
+        ("model", "input_channels"): 1,
+        ("model", "layers"): [64, 64, 32, 32, 16, 16],
+        ("model", "dilated_pattern"): [False, True, False, True, False, True],
+        ("model", "kernels"): [3, 5, 9, 15],
+        ("model", "dilated_kernels"): [5, 9, 15],
+        ("model", "dilation"): 3,
+        ("model", "dropout"): 0.4,
+        ("model", "output_kernel_size"): 9,
+        ("model", "loss_fn"): "mse",
+    },
 }
 
 EXPECTED_MAMBATTENTION_VARIANTS = {

@@ -26,6 +26,9 @@ case "$MODEL" in
   fcn_dae|fcndae)
     CONFIG="configs/ecg_baseline_wander_fcn_dae.yaml"
     ;;
+  deepfilter|deep_filter)
+    CONFIG="configs/ecg_baseline_wander_deepfilter.yaml"
+    ;;
   drnn|drrn)
     CONFIG="configs/ecg_baseline_wander_drnn.yaml"
     ;;
@@ -37,7 +40,7 @@ case "$MODEL" in
     ;;
   *)
     echo "Unknown model: $MODEL" >&2
-    echo "Expected one of: pc_scfm, mecg_e, mambattention, mambattention_stfrft, eddm, fcn_dae, drnn, fir_filter, iir_filter" >&2
+    echo "Expected one of: pc_scfm, mecg_e, mambattention, mambattention_stfrft, eddm, fcn_dae, deepfilter, drnn, fir_filter, iir_filter" >&2
     exit 2
     ;;
 esac

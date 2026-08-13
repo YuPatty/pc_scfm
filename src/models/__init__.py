@@ -6,3 +6,4 @@ from .eddm import *
 from .classical_filters import *
 from .drnn import *
 from .fcn_dae import *
+from .deepfilter import *

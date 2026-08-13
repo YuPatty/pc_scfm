@@ -32,6 +32,7 @@ models/
   eddm.py
   drnn.py
   fcn_dae.py
+  deepfilter.py
   classical_filters.py
   factory.py
 
@@ -54,6 +55,7 @@ pc_scfm
 eddm
 drnn
 fcn_dae
+deepfilter
 fir_filter
 iir_filter
 ```

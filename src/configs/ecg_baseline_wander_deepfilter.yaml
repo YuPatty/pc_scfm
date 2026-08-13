@@ -1,0 +1,91 @@
+data_dir: "../data/ecg_baseline_wander"
+root_dir: "../runs/ecg_baseline_wander"
+
+checkpoint_dir: "${root_dir}/checkpoint"
+results_dir: "${root_dir}/results"
+log_dir: "${root_dir}/log"
+
+exp_name: ptbxl_lead2_baseline_wander_deepfilter
+model_name: deepfilter
+seed: 42
+log_tensorboard: True
+log_config: False
+log_model_architecture: False
+
+training:
+  batch_size: 32
+  train_iterations: 20000
+  eval_every: 100
+  validation_metrics_every: 500
+  save_every: 5000
+  lr: 1.0e-4
+  early_stopping_patience: 25
+  early_stopping_min_delta: 1.0e-4
+  progress_bar: True
+  resume: False
+  resume_checkpoint: null
+
+evaluation:
+  low_frequency_high_hz: 0.5
+
+dataset:
+  name: ecg_baseline_wander
+  data_dir: "${data_dir}"
+  train_dataset: ptbxl
+  external_test_datasets:
+    - mit_bih
+    - chapman
+    - cpsc
+  lead: II
+  split:
+    strategy: ptbxl_official_folds
+    patient_wise: True
+    train_folds: [1, 2, 3, 4, 5, 6, 7, 8]
+    validation_fold: 9
+    test_fold: 10
+    ratio: [0.8, 0.1, 0.1]
+  clean_reference:
+    filter_type: butterworth
+    filter_order: 4
+    zero_phase: True
+    bandpass_hz: [0.05, 40.0]
+  resample_hz: 250
+  window_size: 512
+  overlap_ratio: 0.5
+  normalization: z_score
+  baseline_wander:
+    train_source: nstdb
+    alpha_mode: peak_to_peak_ratio
+    alpha_values: [0.05, 0.1, 0.2, 0.3, 0.5]
+    controlled_frequencies_hz: [0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1.0]
+    test_types:
+      - nstdb
+      - sinusoidal
+      - multi_sine
+      - random_low_frequency_drift
+  eps: 1.0e-10
+
+model:
+  fea: "pha"
+  norm: False
+  dense_channel: 64
+  compress_factor: 0.3
+  num_tscblocks: 4
+  d_state: 16
+  d_conv: 4
+  expand: 4
+  norm_epsilon: 1.0e-5
+  sampling_rate: 250
+  n_fft: 64
+  hop_size: 8
+  win_size: 64
+  beta: 2
+  input_channels: 1
+  layers: [64, 64, 32, 32, 16, 16]
+  dilated_pattern: [False, True, False, True, False, True]
+  kernels: [3, 5, 9, 15]
+  dilated_kernels: [5, 9, 15]
+  dilation: 3
+  dropout: 0.4
+  output_kernel_size: 9
+  loss_fn: "mse"
