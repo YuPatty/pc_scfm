@@ -232,9 +232,12 @@ def train():
             0,
             best_val_loss,
             best_val_pcc,
+            patience_counter,
             train_losses,
             val_losses,
             val_pccs,
+            val_metric_history,
+            args,
         )
     elif resume:
         if not resume_checkpoint.exists():
