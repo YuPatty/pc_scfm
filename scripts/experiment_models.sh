@@ -6,6 +6,7 @@ EXPERIMENT_MODELS=(
   "iir_filter|configs/ecg_baseline_wander_iir_filter.yaml|ptbxl_lead2_baseline_wander_iir_filter|iir_filter"
   "drnn|configs/ecg_baseline_wander_drnn.yaml|ptbxl_lead2_baseline_wander_drnn|drnn"
   "eddm|configs/ecg_baseline_wander_eddm.yaml|ptbxl_lead2_baseline_wander_eddm|eddm"
+  "fcn_dae|configs/ecg_baseline_wander_fcn_dae.yaml|ptbxl_lead2_baseline_wander_fcn_dae|fcn_dae"
   "mambattention|configs/ecg_baseline_wander_mambattention.yaml|ptbxl_lead2_baseline_wander_mambattention|mambattention_ecg"
   "mambattention_stfrft|configs/ecg_baseline_wander_mambattention_stfrft.yaml|ptbxl_lead2_baseline_wander_mambattention_stfrft|mambattention_stfrft_ecg"
   "mambattention_stfrft_no_freq_attention|configs/ecg_baseline_wander_mambattention_stfrft_no_freq_attention.yaml|ptbxl_lead2_baseline_wander_mambattention_stfrft_no_freq_attention|mambattention_stfrft_ecg"

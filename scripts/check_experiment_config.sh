@@ -151,6 +151,16 @@ EXPECTED_BY_MODEL = {
         ("model", "residual"): False,
         ("model", "loss_fn"): "mse",
     },
+    "fcn_dae": {
+        ("model", "dense_channel"): 64,
+        ("model", "input_channels"): 1,
+        ("model", "kernel_size"): 16,
+        ("model", "encoder_channels"): [40, 20, 20, 20, 40, 1],
+        ("model", "encoder_strides"): [2, 2, 2, 2, 2, 1],
+        ("model", "decoder_channels"): [1, 40, 20, 20, 20, 40, 1],
+        ("model", "decoder_strides"): [1, 2, 2, 2, 2, 2, 1],
+        ("model", "loss_fn"): "mse",
+    },
 }
 
 EXPECTED_MAMBATTENTION_VARIANTS = {

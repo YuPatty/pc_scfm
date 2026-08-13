@@ -31,6 +31,7 @@ models/
   pc_scfm_components.py
   eddm.py
   drnn.py
+  fcn_dae.py
   classical_filters.py
   factory.py
 
@@ -52,6 +53,7 @@ mambattention_ecg
 pc_scfm
 eddm
 drnn
+fcn_dae
 fir_filter
 iir_filter
 ```

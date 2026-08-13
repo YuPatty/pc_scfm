@@ -20,6 +20,9 @@ eddm
 drnn
   LSTM-based deep recurrent denoising neural network baseline
 
+fcn_dae
+  Fully convolutional denoising autoencoder baseline from Chiang et al. 2019
+
 fir_filter
   Classical FIR high-pass ECG filter baseline, based on Kaiser-window design
 
@@ -59,6 +62,7 @@ src/models/pc_scfm.py
 src/models/pc_scfm_components.py
 src/models/eddm.py
 src/models/drnn.py
+src/models/fcn_dae.py
 src/models/classical_filters.py
 src/models/factory.py
 ```
@@ -71,6 +75,7 @@ src/configs/ecg_baseline_wander_mambattention.yaml
 src/configs/ecg_baseline_wander_pc_scfm.yaml
 src/configs/ecg_baseline_wander_eddm.yaml
 src/configs/ecg_baseline_wander_drnn.yaml
+src/configs/ecg_baseline_wander_fcn_dae.yaml
 src/configs/ecg_baseline_wander_fir_filter.yaml
 src/configs/ecg_baseline_wander_iir_filter.yaml
 ```
@@ -227,6 +232,13 @@ bash scripts/train_model.sh mambattention
 ```bash
 cd <PROJECT_ROOT>
 bash scripts/train_model.sh drnn
+```
+
+訓練 FCN-DAE：
+
+```bash
+cd <PROJECT_ROOT>
+bash scripts/train_model.sh fcn_dae
 ```
 
 執行 FIR / IIR 傳統濾波 baseline：
