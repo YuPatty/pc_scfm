@@ -109,6 +109,21 @@ EXPECTED_BY_MODEL = {
         ("model", "use_freq_attention"): True,
         ("model", "pcscfm_enabled"): True,
     },
+    "eddm": {
+        ("model", "dense_channel"): 64,
+        ("model", "timesteps"): 50,
+        ("model", "inference_steps"): 10,
+        ("model", "base_channels"): 64,
+        ("model", "channel_mults"): [1, 2, 4],
+        ("model", "time_dim"): 256,
+        ("model", "dropout"): 0.0,
+        ("model", "gaussian_scale"): 0.2,
+        ("model", "ecg_noise_weight"): 1.0,
+        ("model", "gaussian_noise_weight"): 0.1,
+        ("model", "clean_weight"): 1.0,
+        ("model", "pcc_weight"): 0.1,
+        ("model", "pool_scales"): [2, 4, 8],
+    },
 }
 
 EXPECTED_MAMBATTENTION_VARIANTS = {

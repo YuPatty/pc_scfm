@@ -20,9 +20,12 @@ case "$MODEL" in
   mambattention_stfrft|mambattention_stfrft_ecg)
     CONFIG="configs/ecg_baseline_wander_mambattention_stfrft.yaml"
     ;;
+  eddm)
+    CONFIG="configs/ecg_baseline_wander_eddm.yaml"
+    ;;
   *)
     echo "Unknown model: $MODEL" >&2
-    echo "Expected one of: pc_scfm, mecg_e, mambattention, mambattention_stfrft" >&2
+    echo "Expected one of: pc_scfm, mecg_e, mambattention, mambattention_stfrft, eddm" >&2
     exit 2
     ;;
 esac

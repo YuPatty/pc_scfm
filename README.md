@@ -13,6 +13,9 @@ mambattention_ecg
 
 pc_scfm
   MambAttention + flow proposal + policy/controller + reject + morphology safety
+
+eddm
+  Dual-path diffusion ECG denoiser with ECG-noise and Gaussian-noise paths
 ```
 
 PC-SCFM 消融實驗只針對 `pc_scfm`。一般訓練、推論、robustness sweep 則三個模型都可以跑。
@@ -45,6 +48,7 @@ src/models/mecg_e.py
 src/models/mambattention.py
 src/models/pc_scfm.py
 src/models/pc_scfm_components.py
+src/models/eddm.py
 src/models/factory.py
 ```
 
@@ -54,6 +58,7 @@ Config 檔案：
 src/configs/ecg_baseline_wander_mecg_e.yaml
 src/configs/ecg_baseline_wander_mambattention.yaml
 src/configs/ecg_baseline_wander_pc_scfm.yaml
+src/configs/ecg_baseline_wander_eddm.yaml
 ```
 
 ## 環境安裝
