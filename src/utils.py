@@ -278,6 +278,10 @@ def profile_model_complexity(model, device, input_length, batch_size=1, warmup=5
         flops = float(flops)
     except Exception:
         pass
+    finally:
+        for module in model.modules():
+            module._buffers.pop("total_ops", None)
+            module._buffers.pop("total_params", None)
 
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
