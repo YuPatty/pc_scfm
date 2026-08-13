@@ -17,6 +17,9 @@ pc_scfm
 eddm
   Dual-path diffusion ECG denoiser with ECG-noise and Gaussian-noise paths
 
+drnn
+  LSTM-based deep recurrent denoising neural network baseline
+
 fir_filter
   Classical FIR high-pass ECG filter baseline, based on Kaiser-window design
 
@@ -55,6 +58,7 @@ src/models/mambattention.py
 src/models/pc_scfm.py
 src/models/pc_scfm_components.py
 src/models/eddm.py
+src/models/drnn.py
 src/models/classical_filters.py
 src/models/factory.py
 ```
@@ -66,6 +70,7 @@ src/configs/ecg_baseline_wander_mecg_e.yaml
 src/configs/ecg_baseline_wander_mambattention.yaml
 src/configs/ecg_baseline_wander_pc_scfm.yaml
 src/configs/ecg_baseline_wander_eddm.yaml
+src/configs/ecg_baseline_wander_drnn.yaml
 src/configs/ecg_baseline_wander_fir_filter.yaml
 src/configs/ecg_baseline_wander_iir_filter.yaml
 ```
@@ -215,6 +220,13 @@ bash scripts/train_model.sh mecg_e
 ```bash
 cd <PROJECT_ROOT>
 bash scripts/train_model.sh mambattention
+```
+
+訓練 DRNN：
+
+```bash
+cd <PROJECT_ROOT>
+bash scripts/train_model.sh drnn
 ```
 
 執行 FIR / IIR 傳統濾波 baseline：

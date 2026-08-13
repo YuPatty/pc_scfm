@@ -4,6 +4,7 @@ EXPERIMENT_MODELS=(
   "mecge|configs/ecg_baseline_wander_mecg_e.yaml|ptbxl_lead2_baseline_wander_mecg_e|mecg_e"
   "fir_filter|configs/ecg_baseline_wander_fir_filter.yaml|ptbxl_lead2_baseline_wander_fir_filter|fir_filter"
   "iir_filter|configs/ecg_baseline_wander_iir_filter.yaml|ptbxl_lead2_baseline_wander_iir_filter|iir_filter"
+  "drnn|configs/ecg_baseline_wander_drnn.yaml|ptbxl_lead2_baseline_wander_drnn|drnn"
   "eddm|configs/ecg_baseline_wander_eddm.yaml|ptbxl_lead2_baseline_wander_eddm|eddm"
   "mambattention|configs/ecg_baseline_wander_mambattention.yaml|ptbxl_lead2_baseline_wander_mambattention|mambattention_ecg"
   "mambattention_stfrft|configs/ecg_baseline_wander_mambattention_stfrft.yaml|ptbxl_lead2_baseline_wander_mambattention_stfrft|mambattention_stfrft_ecg"

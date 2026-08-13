@@ -141,6 +141,16 @@ EXPECTED_BY_MODEL = {
         ("model", "iir_method"): "butterworth",
         ("model", "zero_phase"): True,
     },
+    "drnn": {
+        ("model", "dense_channel"): 64,
+        ("model", "input_size"): 1,
+        ("model", "hidden_size"): 64,
+        ("model", "lstm_layers"): 1,
+        ("model", "dense_layers"): [64, 64],
+        ("model", "dropout"): 0.0,
+        ("model", "residual"): False,
+        ("model", "loss_fn"): "mse",
+    },
 }
 
 EXPECTED_MAMBATTENTION_VARIANTS = {
