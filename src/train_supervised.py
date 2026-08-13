@@ -480,7 +480,6 @@ def train():
     # final evaluation — test best checkpoints independently
     eval_checkpoints = [
         ('best_pcc',  best_pcc_model_ckpt),
-        ('best_loss', best_model_ckpt),
     ]
 
     for ckpt_name, ckpt_path in eval_checkpoints:
