@@ -81,14 +81,13 @@ model:
   win_size: 64
   beta: 2
   timesteps: 50
-  inference_steps: 10
+  inference_steps: 50
   base_channels: 64
-  channel_mults: [1, 2, 4]
+  channel_mults: [1, 2, 4, 8]
   time_dim: 256
   dropout: 0.0
   gaussian_scale: 0.2
   ecg_noise_weight: 1.0
-  gaussian_noise_weight: 0.1
-  clean_weight: 1.0
-  pcc_weight: 0.1
-  pool_scales: [2, 4, 8]
+  gaussian_noise_weight: 1.0
+  pool_scales: [3, 5, 9, 15]
+  attention_heads: 4

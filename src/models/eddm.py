@@ -27,6 +27,37 @@ class SinusoidalTimeEmbedding(nn.Module):
         return emb
 
 
+class DiffusionCoefficientEmbedding(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = int(dim)
+        self.scalar_dim = max(self.dim // 2, 2)
+
+    def _embed_scalar(self, value):
+        half = self.scalar_dim // 2
+        scale = math.log(10000) / max(half - 1, 1)
+        freqs = torch.exp(torch.arange(half, device=value.device, dtype=torch.float32) * -scale)
+        emb = value.float().unsqueeze(1) * freqs.unsqueeze(0)
+        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
+        if self.scalar_dim % 2:
+            emb = F.pad(emb, (0, 1))
+        return emb
+
+    def forward(self, coefficients):
+        if coefficients.ndim != 2 or coefficients.shape[1] != 2:
+            raise ValueError(f"Expected diffusion coefficients shaped [B, 2], got {tuple(coefficients.shape)}.")
+        emb = torch.cat(
+            [
+                self._embed_scalar(coefficients[:, 0]),
+                self._embed_scalar(coefficients[:, 1]),
+            ],
+            dim=1,
+        )
+        if emb.shape[1] < self.dim:
+            emb = F.pad(emb, (0, self.dim - emb.shape[1]))
+        return emb[:, : self.dim]
+
+
 class ConvBlock1d(nn.Module):
     def __init__(self, in_channels, out_channels, time_dim, groups=8, dropout=0.0):
         super().__init__()
@@ -57,9 +88,10 @@ class ConvBlock1d(nn.Module):
 
 
 class DeepAggregationPyramidPooling1d(nn.Module):
-    def __init__(self, channels, pool_scales=(2, 4, 8)):
+    def __init__(self, channels, pool_scales=(3, 5, 9, 15), use_global_pool=True):
         super().__init__()
         self.pool_scales = tuple(pool_scales)
+        self.use_global_pool = bool(use_global_pool)
         self.projections = nn.ModuleList(
             [
                 nn.Sequential(
@@ -70,8 +102,14 @@ class DeepAggregationPyramidPooling1d(nn.Module):
                 for scale in self.pool_scales
             ]
         )
+        self.global_projection = nn.Sequential(
+            nn.AdaptiveAvgPool1d(1),
+            nn.Conv1d(channels, channels, 1),
+            nn.SiLU(),
+        ) if self.use_global_pool else None
+        feature_count = len(self.pool_scales) + 1 + int(self.use_global_pool)
         self.fuse = nn.Sequential(
-            nn.Conv1d(channels * (len(self.pool_scales) + 1), channels, 1),
+            nn.Conv1d(channels * feature_count, channels, 1),
             nn.GroupNorm(1, channels),
             nn.SiLU(),
             nn.Conv1d(channels, channels, 3, padding=1),
@@ -83,7 +121,27 @@ class DeepAggregationPyramidPooling1d(nn.Module):
         for projection in self.projections:
             pooled = projection(x)
             features.append(F.interpolate(pooled, size=length, mode="linear", align_corners=False))
+        if self.global_projection is not None:
+            pooled = self.global_projection(x)
+            features.append(F.interpolate(pooled, size=length, mode="linear", align_corners=False))
         return self.fuse(torch.cat(features, dim=1)) + x
+
+
+class SelfAttention1d(nn.Module):
+    def __init__(self, channels, heads=4):
+        super().__init__()
+        self.norm = nn.GroupNorm(1, channels)
+        self.attn = nn.MultiheadAttention(
+            embed_dim=int(channels),
+            num_heads=int(heads),
+            batch_first=True,
+        )
+
+    def forward(self, x):
+        residual = x
+        sequence = self.norm(x).transpose(1, 2)
+        attended, _ = self.attn(sequence, sequence, sequence, need_weights=False)
+        return residual + attended.transpose(1, 2)
 
 
 class DownBlock1d(nn.Module):
@@ -110,19 +168,20 @@ class UpBlock1d(nn.Module):
         return self.block(torch.cat([x, skip], dim=1), time_emb)
 
 
-class EDDMUNet1d(nn.Module):
+class EDDMNoiseUNet1d(nn.Module):
     def __init__(
         self,
         in_channels=2,
         base_channels=64,
-        channel_mults=(1, 2, 4),
+        channel_mults=(1, 2, 4, 8),
         time_dim=256,
         dropout=0.0,
-        pool_scales=(2, 4, 8),
+        pool_scales=(3, 5, 9, 15),
+        attention_heads=4,
     ):
         super().__init__()
         self.time_mlp = nn.Sequential(
-            SinusoidalTimeEmbedding(time_dim),
+            DiffusionCoefficientEmbedding(time_dim),
             nn.Linear(time_dim, time_dim),
             nn.SiLU(),
             nn.Linear(time_dim, time_dim),
@@ -138,9 +197,14 @@ class EDDMUNet1d(nn.Module):
         self.mid = nn.ModuleList(
             [
                 ConvBlock1d(channels[-1], channels[-1], time_dim, dropout=dropout),
-                DeepAggregationPyramidPooling1d(channels[-1], pool_scales=pool_scales),
+                SelfAttention1d(channels[-1], heads=attention_heads),
                 ConvBlock1d(channels[-1], channels[-1], time_dim, dropout=dropout),
             ]
+        )
+        self.first_skip_dapp = DeepAggregationPyramidPooling1d(
+            channels[0],
+            pool_scales=pool_scales,
+            use_global_pool=True,
         )
 
         self.ups = nn.ModuleList()
@@ -153,15 +217,17 @@ class EDDMUNet1d(nn.Module):
         self.output = nn.Sequential(
             nn.GroupNorm(1, channels[0]),
             nn.SiLU(),
-            nn.Conv1d(channels[0], 2, 3, padding=1),
+            nn.Conv1d(channels[0], 1, 3, padding=1),
         )
 
-    def forward(self, x, t):
-        time_emb = self.time_mlp(t)
+    def forward(self, x, coefficients):
+        time_emb = self.time_mlp(coefficients)
         x = self.input(x)
         skips = []
-        for down in self.downs:
+        for index, down in enumerate(self.downs):
             x, skip = down(x, time_emb)
+            if index == 0:
+                skip = self.first_skip_dapp(skip)
             skips.append(skip)
         for layer in self.mid:
             if isinstance(layer, ConvBlock1d):
@@ -178,17 +244,16 @@ class EDDMDenoiser(nn.Module):
     def __init__(
         self,
         timesteps=50,
-        inference_steps=10,
+        inference_steps=50,
         base_channels=64,
-        channel_mults=(1, 2, 4),
+        channel_mults=(1, 2, 4, 8),
         time_dim=256,
         dropout=0.0,
         gaussian_scale=0.2,
         ecg_noise_weight=1.0,
-        gaussian_noise_weight=0.1,
-        clean_weight=1.0,
-        pcc_weight=0.1,
-        pool_scales=(2, 4, 8),
+        gaussian_noise_weight=1.0,
+        pool_scales=(3, 5, 9, 15),
+        attention_heads=4,
         **kwargs,
     ):
         super().__init__()
@@ -197,15 +262,23 @@ class EDDMDenoiser(nn.Module):
         self.gaussian_scale = float(gaussian_scale)
         self.ecg_noise_weight = float(ecg_noise_weight)
         self.gaussian_noise_weight = float(gaussian_noise_weight)
-        self.clean_weight = float(clean_weight)
-        self.pcc_weight = float(pcc_weight)
-        self.net = EDDMUNet1d(
+        self.ecg_noise_model = EDDMNoiseUNet1d(
             in_channels=2,
             base_channels=int(base_channels),
             channel_mults=tuple(channel_mults),
             time_dim=int(time_dim),
             dropout=float(dropout),
             pool_scales=tuple(pool_scales),
+            attention_heads=int(attention_heads),
+        )
+        self.white_noise_model = EDDMNoiseUNet1d(
+            in_channels=2,
+            base_channels=int(base_channels),
+            channel_mults=tuple(channel_mults),
+            time_dim=int(time_dim),
+            dropout=float(dropout),
+            pool_scales=tuple(pool_scales),
+            attention_heads=int(attention_heads),
         )
 
         betas = torch.linspace(1.0e-4, 0.02, self.timesteps)
@@ -222,8 +295,10 @@ class EDDMDenoiser(nn.Module):
         return gamma, sigma
 
     def _predict(self, xt, noisy, t):
-        pred = self.net(torch.cat([xt, noisy], dim=1), t)
-        return pred[:, 0:1], pred[:, 1:2]
+        model_input = torch.cat([xt, noisy], dim=1)
+        gamma, sigma = self._coefficients(t, xt.shape[-1])
+        coefficients = torch.cat([gamma.flatten(1), sigma.flatten(1)], dim=1)
+        return self.ecg_noise_model(model_input, coefficients), self.white_noise_model(model_input, coefficients)
 
     def _clean_from_prediction(self, xt, t, ecg_noise, gaussian_noise):
         gamma, sigma = self._coefficients(t, xt.shape[-1])
@@ -245,8 +320,8 @@ class EDDMDenoiser(nn.Module):
             clean = self._clean_from_prediction(current, t, ecg_noise, gaussian_noise)
             prev_t = max(int(t_value.item()) - 1, 0)
             prev = torch.full((x.shape[0],), prev_t, device=x.device, dtype=torch.long)
-            prev_gamma, _ = self._coefficients(prev, x.shape[-1])
-            current = clean + prev_gamma * ecg_noise
+            prev_gamma, prev_sigma = self._coefficients(prev, x.shape[-1])
+            current = clean + prev_gamma * ecg_noise + prev_sigma * gaussian_noise
         return current
 
     @torch.no_grad()
@@ -269,10 +344,11 @@ class EDDMDenoiser(nn.Module):
         xt = clean + gamma * ecg_noise + sigma * gaussian_noise
 
         pred_ecg_noise, pred_gaussian_noise = self._predict(xt, noisy, t)
-        pred_clean = self._clean_from_prediction(xt, t, pred_ecg_noise, pred_gaussian_noise)
 
         if valid_mask is not None:
             valid_mask = valid_mask.to(device, dtype=clean.dtype)
+            if valid_mask.ndim == 2:
+                valid_mask = valid_mask.unsqueeze(1)
             denom = valid_mask.sum().clamp_min(1.0)
 
             def masked_mse(a, b):
@@ -280,22 +356,11 @@ class EDDMDenoiser(nn.Module):
 
             ecg_loss = masked_mse(pred_ecg_noise, ecg_noise)
             gaussian_loss = masked_mse(pred_gaussian_noise, gaussian_noise)
-            clean_loss = masked_mse(pred_clean, clean)
         else:
             ecg_loss = F.mse_loss(pred_ecg_noise, ecg_noise)
             gaussian_loss = F.mse_loss(pred_gaussian_noise, gaussian_noise)
-            clean_loss = F.mse_loss(pred_clean, clean)
-
-        pred_centered = pred_clean - pred_clean.mean(dim=-1, keepdim=True)
-        clean_centered = clean - clean.mean(dim=-1, keepdim=True)
-        pcc = (pred_centered * clean_centered).sum(dim=-1) / (
-            pred_centered.norm(dim=-1) * clean_centered.norm(dim=-1) + 1.0e-8
-        )
-        pcc_loss = 1.0 - pcc.mean()
 
         return (
             self.ecg_noise_weight * ecg_loss
             + self.gaussian_noise_weight * gaussian_loss
-            + self.clean_weight * clean_loss
-            + self.pcc_weight * pcc_loss
         )
