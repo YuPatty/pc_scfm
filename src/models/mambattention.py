@@ -61,3 +61,8 @@ class MambAttentionECGDenoiser(ECGDenoisingModel):
 @register_model("mambattention_stfrft_ecg")
 class MambAttentionSTFrFTECGDenoiser(MambAttentionECGDenoiser):
     pass
+
+
+@register_model("mambattention_stfrft_lf_morph_ecg")
+class MambAttentionSTFrFTLFMorphECGDenoiser(MambAttentionSTFrFTECGDenoiser):
+    pass
