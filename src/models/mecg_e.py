@@ -1004,7 +1004,16 @@ class MECGECore(nn.Module):
         mask = mask.to(value.device, dtype=value.dtype)
         return (value * mask).sum() / mask.sum().clamp_min(1.0)
 
+    def _debug_nan_check(self, tag, value):
+        import os
+        if os.environ.get("PC_SCFM_DEBUG_NAN", "0") != "1":
+            return
+        if torch.isnan(value).any() or torch.isinf(value).any():
+            raise FloatingPointError(f"[PC_SCFM_DEBUG_NAN] non-finite value detected right after term: '{tag}' -> {value}")
+
     def _ecg_loss(self, clean_audio, restored_audio, norm_factor, predicted_com=None, aux_history=None, valid_mask=None):
+        self._debug_nan_check("input:clean_audio", clean_audio)
+        self._debug_nan_check("input:restored_audio", restored_audio)
         _, _, clean_com = self._mag_pha_transform(clean_audio)
         _, _, restored_com = self._mag_pha_transform_loss(restored_audio)
         com_g = predicted_com if predicted_com is not None else restored_com
@@ -1013,21 +1022,26 @@ class MECGECore(nn.Module):
         if "time" in self.loss_fn:
             loss_time = F.l1_loss(clean_audio, restored_audio, reduction="none")
             loss = loss + 0.5 * self._masked_mean(loss_time / norm_factor.squeeze(-1), valid_mask)
+            self._debug_nan_check("time", loss)
         if "com" in self.loss_fn:
             loss_com = F.mse_loss(clean_com, restored_com, reduction="none") * 2
             loss = loss + 0.5 * (loss_com / norm_factor.unsqueeze(-1)).mean()
+            self._debug_nan_check("com", loss)
         if "con" in self.loss_fn:
             loss_con = F.mse_loss(com_g, restored_com, reduction="none") * 2
             loss = loss + 0.5 * (loss_con / norm_factor.unsqueeze(-1)).mean()
+            self._debug_nan_check("con", loss)
         if "lf" in self.loss_fn:
             lf_residual = self._baseline_projection((restored_audio - clean_audio).unsqueeze(1)).squeeze(1)
             loss = loss + self._masked_mean(lf_residual.abs(), valid_mask) * self.h.get("lambda_lf", 0.2)
+            self._debug_nan_check("lf", loss)
         if "morph" in self.loss_fn:
             clean_derivative = clean_audio[..., 1:] - clean_audio[..., :-1]
             restored_derivative = restored_audio[..., 1:] - restored_audio[..., :-1]
             derivative_loss = F.l1_loss(restored_derivative, clean_derivative, reduction="none")
             derivative_mask = valid_mask[..., 1:] * valid_mask[..., :-1] if valid_mask is not None else None
             loss = loss + self._masked_mean(derivative_loss, derivative_mask) * self.h.get("lambda_morph", 0.1)
+            self._debug_nan_check("morph", loss)
 
         if aux_history and "flow" in self.loss_fn:
             flow_loss = clean_audio.new_tensor(0.0)
@@ -1041,6 +1055,7 @@ class MECGECore(nn.Module):
                     inv_var = torch.exp(-item["flow_logvar"])
                     flow_loss = flow_loss + ((item["flow_mu"] - target) ** 2 * inv_var + item["flow_logvar"]).mean()
             loss = loss + (flow_loss / len(aux_history)) * self.h.get("lambda_flow", 0.01)
+            self._debug_nan_check("flow", loss)
 
         if aux_history and "bc" in self.loss_fn:
             bc_loss = clean_audio.new_tensor(0.0)
@@ -1061,6 +1076,7 @@ class MECGECore(nn.Module):
                     reject_loss = F.binary_cross_entropy(reject_prob, reject_target)
                 bc_loss = bc_loss + alpha_loss + weight_loss + 0.2 * stop_loss + 0.2 * reject_loss
             loss = loss + (bc_loss / len(aux_history)) * self.lambda_bc
+            self._debug_nan_check("bc", loss)
 
         if aux_history and "value" in self.loss_fn:
             final_abs = (restored_audio - clean_audio).abs()
@@ -1076,10 +1092,12 @@ class MECGECore(nn.Module):
                 value_loss = value_loss + F.mse_loss(item["value"], -final_l1)
                 cost_loss = cost_loss + F.mse_loss(item["cost_value"], item["morph_cost"].detach())
             loss = loss + ((value_loss + cost_loss) / len(aux_history)) * self.lambda_policy_value
+            self._debug_nan_check("value", loss)
 
         if aux_history and "risk" in self.loss_fn:
             reject_cost = torch.stack([item["reject_prob"].mean() for item in aux_history]).mean() * self.lambda_reject
             loss = loss + len(aux_history) * self.lambda_step + reject_cost
+            self._debug_nan_check("risk", loss)
         return loss
 
     def forward(self, clean_audio, noisy_audio, valid_mask=None):
