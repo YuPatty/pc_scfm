@@ -1,4 +1,5 @@
 import torch 
+from torch.amp import autocast, GradScaler
 from torch.utils.data import DataLoader 
 from torch.utils.tensorboard import SummaryWriter 
 
@@ -163,6 +164,10 @@ def train():
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.training.train_iterations, eta_min=1e-5
     )
+
+    use_amp = bool(args.training.get("amp", True)) and device.type == "cuda"
+    scaler = GradScaler("cuda", enabled=use_amp)
+    logger.info(f"Mixed precision (AMP) enabled: {use_amp}")
     if args.get("log_model_architecture", False):
         logger.info("\n"+"-"*30+"Model Architecture"+"-"*30+"\n")
         logger.info(f'{model}\n')
@@ -274,10 +279,13 @@ def train():
 
             for train_batch in train_loader:
                 optimizer.zero_grad()
-                train_loss = model.compute_loss(train_batch, device)
-                train_loss.backward()
+                with autocast("cuda", enabled=use_amp):
+                    train_loss = model.compute_loss(train_batch, device)
+                scaler.scale(train_loss).backward()
+                scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                optimizer.step()
+                scaler.step(optimizer)
+                scaler.update()
                 scheduler.step()
 
                 running_train_loss += train_loss.item()
